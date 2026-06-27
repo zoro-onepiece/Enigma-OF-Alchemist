@@ -1,8 +1,11 @@
-import { Canvas } from "@react-three/fiber";
-import { OrbitControls, Grid, Environment, Stats } from "@react-three/drei";
+import { useRef } from "react";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { Grid, Environment, Stats } from "@react-three/drei";
+import * as THREE from "three";
 import Floor from "./Floor";
-import ModelLoader from "./ModelLoader";
+import Player, { PLAYER_WORLD_POS, PLAYER_WORLD_ROT } from "../3d/Player";
 
+// ─── WebGL capability check ───────────────────────────────────────────────────
 function isWebGLAvailable(): boolean {
   try {
     const canvas = document.createElement("canvas");
@@ -15,6 +18,45 @@ function isWebGLAvailable(): boolean {
   }
 }
 
+// ─── Third-person follow camera ───────────────────────────────────────────────
+const _camTarget = new THREE.Vector3();
+const _camPos    = new THREE.Vector3();
+const _lookAt    = new THREE.Vector3();
+
+function FollowCamera() {
+  const { camera } = useThree();
+
+  // Set initial camera pose once
+  const initialised = useRef(false);
+  if (!initialised.current) {
+    camera.position.set(0, 3, 8);
+    camera.lookAt(0, 1.2, 0);
+    initialised.current = true;
+  }
+
+  useFrame(() => {
+    const px = PLAYER_WORLD_POS.x;
+    const py = PLAYER_WORLD_POS.y;
+    const pz = PLAYER_WORLD_POS.z;
+    const ry = PLAYER_WORLD_ROT.y;
+
+    // Offset: 7 units behind the player, 3 units up — rotates with the player
+    const offsetX = Math.sin(ry) * 7;
+    const offsetZ = Math.cos(ry) * 7;
+
+    _camPos.set(px + offsetX, py + 3.5, pz + offsetZ);
+    _lookAt.set(px, py + 1.4, pz);
+
+    // Smooth follow
+    camera.position.lerp(_camPos, 0.06);
+    _camTarget.lerp(_lookAt, 0.1);
+    camera.lookAt(_camTarget);
+  });
+
+  return null;
+}
+
+// ─── WebGL unavailable fallback ───────────────────────────────────────────────
 function WebGLFallback() {
   return (
     <div className="w-full h-full flex flex-col items-center justify-center bg-[#0f0f1a] text-white gap-6 p-8">
@@ -25,41 +67,19 @@ function WebGLFallback() {
         <h2 className="text-lg font-semibold text-white mb-2">WebGL Unavailable</h2>
         <p className="text-sm text-white/50 leading-relaxed">
           This preview sandbox has no GPU access. The 3D scene renders correctly
-          in a real browser — deploy the app or open it in Chrome / Firefox to
-          see the full scene.
+          in a real browser — deploy the app or open it in Chrome / Firefox.
         </p>
-      </div>
-      <div className="grid grid-cols-3 gap-3 mt-2 w-full max-w-sm">
-        {[
-          { label: "@react-three/fiber", desc: "React renderer for Three.js" },
-          { label: "@react-three/drei", desc: "OrbitControls, Grid, Env…" },
-          { label: "three.js", desc: "WebGL scene graph" },
-        ].map((pkg) => (
-          <div
-            key={pkg.label}
-            className="bg-white/5 border border-white/10 rounded-lg px-3 py-3 text-center"
-          >
-            <div className="text-xs font-mono text-purple-400 mb-1">{pkg.label}</div>
-            <div className="text-[10px] text-white/30">{pkg.desc}</div>
-          </div>
-        ))}
-      </div>
-      <div className="text-xs text-white/20 text-center max-w-xs mt-2">
-        Web3 auth components ready at{" "}
-        <code className="bg-white/5 px-1 rounded text-purple-400/60">
-          src/components/web3/
-        </code>
       </div>
     </div>
   );
 }
 
+// ─── Scene ────────────────────────────────────────────────────────────────────
 interface SceneProps {
-  modelUrl?: string;
   showStats?: boolean;
 }
 
-export default function Scene({ modelUrl, showStats = false }: SceneProps) {
+export default function Scene({ showStats = false }: SceneProps) {
   if (!isWebGLAvailable()) {
     return <WebGLFallback />;
   }
@@ -68,68 +88,86 @@ export default function Scene({ modelUrl, showStats = false }: SceneProps) {
     <div className="w-full h-full relative">
       <Canvas
         shadows
-        camera={{ position: [6, 5, 8], fov: 60, near: 0.1, far: 1000 }}
+        camera={{ position: [0, 3, 8], fov: 50, near: 0.1, far: 500 }}
         gl={{ antialias: true, alpha: false }}
-        style={{ background: "#0f0f1a" }}
+        style={{ background: "#0a0a18" }}
       >
         {showStats && <Stats />}
 
-        {/* Lighting */}
-        <ambientLight intensity={0.4} color="#c8b4ff" />
+        {/* Follow camera (replaces OrbitControls — conflicts with movement) */}
+        <FollowCamera />
+
+        {/* ── Lighting ──────────────────────────────────────────────────── */}
+        {/* Soft fill for the anime character skin */}
+        <ambientLight intensity={0.55} color="#d4c8ff" />
+
+        {/* Key light — warm from front-left */}
         <directionalLight
-          position={[10, 15, 10]}
-          intensity={1.2}
+          position={[6, 12, 8]}
+          intensity={1.6}
           castShadow
           shadow-mapSize={[2048, 2048]}
-          shadow-camera-far={50}
-          shadow-camera-left={-20}
-          shadow-camera-right={20}
-          shadow-camera-top={20}
-          shadow-camera-bottom={-20}
-          color="#ffffff"
+          shadow-camera-near={0.5}
+          shadow-camera-far={60}
+          shadow-camera-left={-15}
+          shadow-camera-right={15}
+          shadow-camera-top={15}
+          shadow-camera-bottom={-15}
+          color="#fff5e0"
         />
-        <pointLight position={[-5, 5, -5]} intensity={0.5} color="#7c3aed" />
-        <pointLight position={[5, 3, 5]} intensity={0.3} color="#2563eb" />
 
-        {/* Environment (HDR backdrop) */}
+        {/* Rim light — cool from behind to separate character from bg */}
+        <directionalLight
+          position={[-4, 6, -8]}
+          intensity={0.6}
+          color="#8ecfff"
+        />
+
+        {/* Purple fill from below for anime dungeon vibe */}
+        <pointLight position={[0, 0.3, 0]} intensity={0.4} color="#7c3aed" distance={8} />
+
+        {/* ── Environment & ground ──────────────────────────────────────── */}
         <Environment preset="night" />
 
-        {/* Floor plane */}
         <Floor />
 
-        {/* Grid overlay */}
         <Grid
           position={[0, 0.001, 0]}
-          args={[50, 50]}
+          args={[80, 80]}
           cellSize={1}
-          cellThickness={0.5}
-          cellColor="#4c1d95"
+          cellThickness={0.4}
+          cellColor="#3b1f7a"
           sectionSize={5}
-          sectionThickness={1}
-          sectionColor="#7c3aed"
-          fadeDistance={30}
+          sectionThickness={0.9}
+          sectionColor="#6d28d9"
+          fadeDistance={35}
           fadeStrength={1}
-          followCamera={false}
+          followCamera
           infiniteGrid
         />
 
-        {/* GLB model loader — pass a URL via the modelUrl prop to load a real .glb */}
-        <ModelLoader url={modelUrl} position={[0, 0, 0]} scale={1} />
-
-        {/* Camera controls */}
-        <OrbitControls
-          makeDefault
-          enableDamping
-          dampingFactor={0.05}
-          minDistance={2}
-          maxDistance={30}
-          maxPolarAngle={Math.PI / 2 - 0.05}
-        />
+        {/* ── Player ────────────────────────────────────────────────────── */}
+        <Player />
       </Canvas>
 
-      {/* HUD overlay */}
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-xs text-purple-300/60 pointer-events-none select-none">
-        Drag to orbit · Scroll to zoom · Right-click to pan
+      {/* ── Controls hint overlay ─────────────────────────────────────────── */}
+      <div className="absolute bottom-5 left-1/2 -translate-x-1/2 flex items-center gap-3 pointer-events-none select-none">
+        {[
+          { keys: "W / ↑",   label: "Forward"  },
+          { keys: "S / ↓",   label: "Backward" },
+          { keys: "A / ←",   label: "Turn L"   },
+          { keys: "D / →",   label: "Turn R"   },
+        ].map(({ keys, label }) => (
+          <div
+            key={label}
+            className="flex flex-col items-center gap-0.5"
+          >
+            <kbd className="bg-white/10 border border-white/20 rounded px-2 py-0.5 text-[10px] font-mono text-purple-300">
+              {keys}
+            </kbd>
+            <span className="text-[9px] text-white/30">{label}</span>
+          </div>
+        ))}
       </div>
     </div>
   );
