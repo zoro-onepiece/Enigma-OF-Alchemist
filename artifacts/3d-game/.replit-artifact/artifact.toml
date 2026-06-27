@@ -1,6 +1,6 @@
 kind = "web"
 previewPath = "/"
-title = "3D Game Boilerplate"
+title = "Enigma-OF-Alchemist"
 version = "1.0.0"
 id = "artifacts/3d-game"
 router = "path"
