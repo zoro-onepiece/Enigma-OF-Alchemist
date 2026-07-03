@@ -3,7 +3,6 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Grid, Environment, Stats } from "@react-three/drei";
 import * as THREE from "three";
 import Floor from "./Floor";
-import Forest from "./Forest";
 import Player, { PLAYER_WORLD_POS, PLAYER_WORLD_ROT } from "../3d/Player";
 
 // ─── WebGL capability check ───────────────────────────────────────────────────
@@ -131,7 +130,6 @@ export default function Scene({ showStats = false }: SceneProps) {
         <Environment preset="night" />
 
         <Floor />
-        <Forest />
 
         <Grid
           position={[0, 0.001, 0]}
