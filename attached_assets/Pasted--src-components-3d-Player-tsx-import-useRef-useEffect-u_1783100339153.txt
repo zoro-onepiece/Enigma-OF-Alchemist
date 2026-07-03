@@ -1,0 +1,257 @@
+// src/components/3d/Player.tsx
+import { useRef, useEffect, useCallback, useState } from 'react'
+import { useFrame, useThree } from '@react-three/fiber'
+import { useGLTF, useAnimations } from '@react-three/drei'
+import * as THREE from 'three'
+
+interface PlayerProps {
+  position?: [number, number, number]
+}
+
+// Key state tracking
+const keyState: Record<string, boolean> = {}
+
+export default function Player({ position = [0, 0, 0] }: PlayerProps) {
+  const groupRef = useRef<THREE.Group>(null!)
+  const { scene, animations } = useGLTF('/models/miyu_animated.glb')
+  const { actions, names } = useAnimations(animations, groupRef)
+  const { camera, gl } = useThree()
+  
+  // Camera spherical coordinates
+  const cameraState = useRef({
+    yaw: Math.PI,        // Behind character initially
+    pitch: 0.3,          // Slightly above
+    distance: 5,         // Distance from character
+    targetYaw: Math.PI,
+    targetPitch: 0.3,
+    targetDistance: 5,
+  })
+  
+  // Movement state
+  const velocity = useRef(new THREE.Vector3())
+  const isMoving = useRef(false)
+  const currentAnim = useRef('Idle')
+  const mouseDown = useRef(false)
+  const lastMouse = useRef({ x: 0, y: 0 })
+  
+  // Clone model to avoid shared reference issues
+  const clonedScene = useRef<THREE.Group | null>(null)
+  
+  useEffect(() => {
+    if (!clonedScene.current) {
+      clonedScene.current = scene.clone(true)
+    }
+  }, [scene])
+  
+  // Keyboard event listeners
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      keyState[e.code] = true
+    }
+    const handleKeyUp = (e: KeyboardEvent) => {
+      keyState[e.code] = false
+    }
+    
+    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('keyup', handleKeyUp)
+    
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('keyup', handleKeyUp)
+    }
+  }, [])
+  
+  // Mouse event listeners for camera orbit
+  useEffect(() => {
+    const canvas = gl.domElement
+    
+    const handleMouseDown = (e: MouseEvent) => {
+      mouseDown.current = true
+      lastMouse.current = { x: e.clientX, y: e.clientY }
+    }
+    
+    const handleMouseUp = () => {
+      mouseDown.current = false
+    }
+    
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!mouseDown.current) return
+      
+      const deltaX = e.clientX - lastMouse.current.x
+      const deltaY = e.clientY - lastMouse.current.y
+      
+      lastMouse.current = { x: e.clientX, y: e.clientY }
+      
+      // Adjust camera yaw and pitch
+      cameraState.current.targetYaw -= deltaX * 0.005
+      cameraState.current.targetPitch += deltaY * 0.005
+      
+      // Clamp pitch to prevent flipping
+      cameraState.current.targetPitch = Math.max(-0.5, Math.min(1.2, cameraState.current.targetPitch))
+    }
+    
+    const handleWheel = (e: WheelEvent) => {
+      cameraState.current.targetDistance += e.deltaY * 0.005
+      // Clamp distance
+      cameraState.current.targetDistance = Math.max(2, Math.min(12, cameraState.current.targetDistance))
+    }
+    
+    // Prevent context menu on right click
+    const handleContextMenu = (e: Event) => e.preventDefault()
+    
+    canvas.addEventListener('mousedown', handleMouseDown)
+    canvas.addEventListener('mouseup', handleMouseUp)
+    canvas.addEventListener('mouseleave', handleMouseUp)
+    canvas.addEventListener('mousemove', handleMouseMove)
+    canvas.addEventListener('wheel', handleWheel)
+    canvas.addEventListener('contextmenu', handleContextMenu)
+    
+    return () => {
+      canvas.removeEventListener('mousedown', handleMouseDown)
+      canvas.removeEventListener('mouseup', handleMouseUp)
+      canvas.removeEventListener('mouseleave', handleMouseUp)
+      canvas.removeEventListener('mousemove', handleMouseMove)
+      canvas.removeEventListener('wheel', handleWheel)
+      canvas.removeEventListener('contextmenu', handleContextMenu)
+    }
+  }, [gl])
+  
+  // Play animation with crossfade
+  const playAnim = useCallback((name: string) => {
+    if (!actions || currentAnim.current === name) return
+    
+    // Find the correct action name (case-insensitive match)
+    let actionName = name
+    const foundAction = names.find(n => 
+      n.toLowerCase() === name.toLowerCase() ||
+      n.toLowerCase().includes(name.toLowerCase())
+    )
+    
+    if (foundAction) {
+      actionName = foundAction
+    }
+    
+    const currentAction = actions[currentAnim.current]
+    const nextAction = actions[actionName]
+    
+    if (nextAction) {
+      if (currentAction) {
+        currentAction.fadeOut(0.2)
+      }
+      nextAction.reset().fadeIn(0.2).play()
+      currentAnim.current = actionName
+    }
+  }, [actions, names])
+  
+  // Main game loop
+  useFrame((_, delta) => {
+    if (!groupRef.current || !clonedScene.current) return
+    
+    // ─── STEP 1: Smooth camera interpolation ───
+    const cam = cameraState.current
+    cam.yaw += (cam.targetYaw - cam.yaw) * 8 * delta
+    cam.pitch += (cam.targetPitch - cam.pitch) * 8 * delta
+    cam.distance += (cam.targetDistance - cam.distance) * 8 * delta
+    
+    // ─── STEP 2: Calculate movement direction from INPUT ───
+    const inputX = (keyState['KeyD'] ? 1 : 0) - (keyState['KeyA'] ? 1 : 0)
+    const inputZ = (keyState['KeyS'] ? 1 : 0) - (keyState['KeyW'] ? 1 : 0)
+    
+    const hasInput = inputX !== 0 || inputZ !== 0
+    isMoving.current = hasInput
+    
+    // ─── STEP 3: Convert input to WORLD direction using CAMERA YAW ───
+    // This is the KEY fix - camera-relative movement
+    const moveDir = new THREE.Vector3()
+    
+    if (hasInput) {
+      // Camera's forward direction (projected onto XZ plane)
+      const cameraForward = new THREE.Vector3(
+        -Math.sin(cam.yaw),
+        0,
+        -Math.cos(cam.yaw)
+      ).normalize()
+      
+      // Camera's right direction
+      const cameraRight = new THREE.Vector3(
+        cameraForward.z,
+        0,
+        -cameraForward.x
+      ).normalize()
+      
+      // Combine input with camera directions
+      moveDir.addScaledVector(cameraForward, -inputZ)  // W/S
+      moveDir.addScaledVector(cameraRight, inputX)      // A/D
+      
+      moveDir.normalize()
+      
+      // Apply movement speed
+      const speed = keyState['ShiftLeft'] ? 8 : 4
+      velocity.current.copy(moveDir).multiplyScalar(speed * delta)
+      
+      // Update position
+      groupRef.current.position.add(velocity.current)
+    }
+    
+    // ─── STEP 4: Rotate character to face movement direction ───
+    if (hasInput) {
+      const targetRotation = Math.atan2(moveDir.x, moveDir.z)
+      
+      // Smooth rotation with shortest path
+      let currentRotation = groupRef.current.rotation.y
+      let diff = targetRotation - currentRotation
+      
+      // Normalize angle difference to [-PI, PI]
+      while (diff > Math.PI) diff -= Math.PI * 2
+      while (diff < -Math.PI) diff += Math.PI * 2
+      
+      groupRef.current.rotation.y += diff * 10 * delta
+    }
+    
+    // ─── STEP 5: Position camera behind character ───
+    const cameraOffset = new THREE.Vector3(
+      Math.sin(cam.yaw) * Math.cos(cam.pitch) * cam.distance,
+      Math.sin(cam.pitch) * cam.distance + 1.5,  // +1.5 to look slightly down
+      Math.cos(cam.yaw) * Math.cos(cam.pitch) * cam.distance
+    )
+    
+    // Camera follows character position
+    const targetCameraPos = new THREE.Vector3().copy(groupRef.current.position).add(cameraOffset)
+    camera.position.lerp(targetCameraPos, 10 * delta)
+    
+    // Camera always looks at character (slightly above feet)
+    const lookTarget = new THREE.Vector3(
+      groupRef.current.position.x,
+      groupRef.current.position.y + 1.2,  // Look at chest height
+      groupRef.current.position.z
+    )
+    camera.lookAt(lookTarget)
+    
+    // ─── STEP 6: Play correct animation ───
+    if (keyState['Space']) {
+      playAnim('Shoot')
+    } else if (hasInput && keyState['ShiftLeft']) {
+      playAnim('Run')
+    } else if (hasInput) {
+      playAnim('Walk')
+    } else {
+      playAnim('Idle')
+    }
+  })
+  
+  // Set initial position
+  useEffect(() => {
+    if (groupRef.current) {
+      groupRef.current.position.set(...position)
+    }
+  }, [position])
+  
+  return (
+    <group ref={groupRef}>
+      <primitive object={clonedScene.current} />
+    </group>
+  )
+}
+
+// Preload the model
+useGLTF.preload('/models/miyu_animated.glb')
