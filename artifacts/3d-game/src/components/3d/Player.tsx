@@ -1,5 +1,6 @@
 import { Suspense, useRef, useEffect, useState, useMemo } from "react";
-import { useGLTF, useAnimations, useKeyboardControls } from "@react-three/drei";
+import type { ElementRef } from "react";
+import { useGLTF, useAnimations, useKeyboardControls, OrbitControls } from "@react-three/drei";
 import { useFrame, useThree, createPortal } from "@react-three/fiber";
 import * as THREE from "three";
 
@@ -43,16 +44,21 @@ const RUN_SPEED = 4.5;
 const TURN_LERP = 10; // higher = snappier facing rotation
 
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
+const CAMERA_HEAD_OFFSET = new THREE.Vector3(0, 1.5, 0);
 
 // Reusable scratch vectors (avoid per-frame GC pressure).
 const _camForward = new THREE.Vector3();
 const _camRight = new THREE.Vector3();
 const _moveDir = new THREE.Vector3();
-const _desiredCamPos = new THREE.Vector3();
-const _lookAtTarget = new THREE.Vector3();
+const _prevPos = new THREE.Vector3(...PLAYER_SPAWN);
+const _deltaPos = new THREE.Vector3();
+const _desiredTarget = new THREE.Vector3();
+
+type OrbitControlsHandle = ElementRef<typeof OrbitControls>;
 
 function PlayerModel() {
   const group = useRef<THREE.Group>(null);
+  const controlsRef = useRef<OrbitControlsHandle>(null);
   const { camera } = useThree();
 
   // Final animated character: mesh + armature + 6 clips
@@ -192,6 +198,28 @@ function PlayerModel() {
       }
     }
 
+    // ── Fortnite camera: follow + strict orbit-target lock ────────────
+    // Translate the camera by exactly the distance the player just moved.
+    // This keeps whatever orbit angle/zoom the mouse set completely intact
+    // (unlike re-deriving camera.position from a fixed offset every frame,
+    // which would fight — and effectively cancel — the user's own mouse
+    // orbit input). The player's own movement is already framerate-smooth
+    // (speed * delta), so this translation is smooth too, no extra lerp
+    // needed on top of it.
+    _deltaPos.copy(g.position).sub(_prevPos);
+    if (_deltaPos.lengthSq() > 0) {
+      camera.position.add(_deltaPos);
+    }
+    _prevPos.copy(g.position);
+
+    // Lock the OrbitControls target exactly onto the player's head/upper
+    // body every frame, so the mouse always orbits around HER, not the
+    // world origin.
+    if (controlsRef.current) {
+      _desiredTarget.copy(g.position).add(CAMERA_HEAD_OFFSET);
+      controlsRef.current.target.copy(_desiredTarget);
+    }
+
     // ── Animation blending ────────────────────────────────────────────
     if (isAttacking.current) {
       crossFadeTo(isGunEquipped ? "gun-fire" : "melee", 0.15, true);
@@ -208,16 +236,33 @@ function PlayerModel() {
   });
 
   return (
-    <group ref={group} position={PLAYER_SPAWN} scale={PLAYER_SCALE} dispose={null}>
-      <primitive object={scene} />
+    <>
+      <group ref={group} position={PLAYER_SPAWN} scale={PLAYER_SCALE} dispose={null}>
+        <primitive object={scene} />
 
-      {/* Weapon attachment: portal the gun mesh directly into the bone's
-          local space so it inherits the bone's animated position/rotation
-          every frame. Only shown while isGunEquipped is true. */}
-      {rightHand &&
-        isGunEquipped &&
-        createPortal(<primitive object={gunScene} />, rightHand)}
-    </group>
+        {/* Weapon attachment: portal the gun mesh directly into the bone's
+            local space so it inherits the bone's animated position/rotation
+            every frame. Only shown while isGunEquipped is true. */}
+        {rightHand &&
+          isGunEquipped &&
+          createPortal(<primitive object={gunScene} />, rightHand)}
+      </group>
+
+      {/* Fortnite-style camera: 360° mouse orbit, can't dip below the
+          horizon (maxPolarAngle), no drag-to-pan. Target is locked onto
+          the player's head every frame above; camera position is
+          translated to follow her, preserving the user's orbit angle. */}
+      <OrbitControls
+        ref={controlsRef}
+        makeDefault
+        enablePan={false}
+        maxPolarAngle={Math.PI / 2}
+        minDistance={3}
+        maxDistance={12}
+        enableDamping
+        dampingFactor={0.1}
+      />
+    </>
   );
 }
 

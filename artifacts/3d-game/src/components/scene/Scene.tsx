@@ -1,15 +1,9 @@
-import { Suspense, useRef, useState } from "react";
-import type { ElementRef } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
-import { Grid, Environment, Sky, Stats, KeyboardControls, OrbitControls } from "@react-three/drei";
-import * as THREE from "three";
+import { Suspense, useState } from "react";
+import { Canvas } from "@react-three/fiber";
+import { Grid, Environment, Sky, Stats, KeyboardControls } from "@react-three/drei";
 import Floor from "./Floor";
 import { WorldModel } from "./WorldModel";
-import Player, {
-  PLAYER_SPAWN,
-  PLAYER_WORLD_POS,
-  playerKeyboardMap,
-} from "../3d/Player";
+import Player, { PLAYER_SPAWN, playerKeyboardMap } from "../3d/Player";
 import GameHUD from "../hud/GameHUD";
 
 // ─── WebGL capability check ───────────────────────────────────────────────────
@@ -25,30 +19,10 @@ function isWebGLAvailable(): boolean {
   }
 }
 
-// ─── Fortnite-style camera rig ─────────────────────────────────────────────
-// OrbitControls owns the camera (mouse drag = 360° orbit, maxPolarAngle keeps
-// it from dipping under the map). This rig just keeps the orbit *target*
-// smoothly chasing the player's upper body every frame — OrbitControls'
-// own per-frame update() then repositions the camera to preserve whatever
-// angle/distance the player last set with the mouse. That's what gives the
-// "camera follows, but you can still freely look around" Fortnite feel.
-const _cameraRigTarget = new THREE.Vector3();
-
-type OrbitControlsHandle = ElementRef<typeof OrbitControls>;
-
-function CameraRig({ controlsRef }: { controlsRef: React.RefObject<OrbitControlsHandle | null> }) {
-  useFrame(() => {
-    const controls = controlsRef.current;
-    if (!controls) return;
-    _cameraRigTarget.set(
-      PLAYER_WORLD_POS.x,
-      PLAYER_WORLD_POS.y + 1.4, // look at upper body / head height
-      PLAYER_WORLD_POS.z,
-    );
-    controls.target.lerp(_cameraRigTarget, 0.15);
-  });
-  return null;
-}
+// Note: the Fortnite-style camera (OrbitControls + follow + target-locking)
+// now lives entirely inside Player.tsx, since it needs the player's group
+// ref and movement math every frame. Nothing camera-related is declared
+// here anymore.
 
 // ─── WebGL unavailable fallback ───────────────────────────────────────────────
 function WebGLFallback() {
@@ -78,7 +52,6 @@ export default function Scene({ showStats = false }: SceneProps) {
   const [score] = useState(340);
   const [essences] = useState(3);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
-  const controlsRef = useRef<OrbitControlsHandle | null>(null);
 
   const handleConnectWallet = () => {
     // Placeholder — Magic Labs + Openfort wiring happens here for Arbitrum Sepolia.
@@ -101,23 +74,6 @@ export default function Scene({ showStats = false }: SceneProps) {
         style={{ background: "#0a0a18" }}
       >
         {showStats && <Stats />}
-
-        {/* Fortnite-style camera: OrbitControls handles mouse-driven 360°
-            orbit (enablePan disabled so you can't drag the world around;
-            maxPolarAngle caps the camera at horizon height so it can't dip
-            below the map). CameraRig keeps the orbit target glued to the
-            player so the camera follows her as she moves. */}
-        <OrbitControls
-          ref={controlsRef}
-          makeDefault
-          enablePan={false}
-          maxPolarAngle={Math.PI / 2}
-          minDistance={3}
-          maxDistance={12}
-          enableDamping
-          dampingFactor={0.08}
-        />
-        <CameraRig controlsRef={controlsRef} />
 
         {/* ── Lighting ──────────────────────────────────────────────────── */}
         {/* Soft fill for the anime character skin */}
@@ -177,15 +133,16 @@ export default function Scene({ showStats = false }: SceneProps) {
             makes the model's widest axis span 250 world units, so trees
             read as 3-5x the character's height.
 
-            The character now spawns at the world origin, so the island
-            just needs to sit slightly below her feet — position={[0,-2,0]}
-            per spec. This is a starting value, not a measured one (the
-            previous -56 offset was solved for a spawn point far from the
-            origin and no longer applies now that movement is camera-
-            relative from [0,0,0]). If she visibly floats or sinks, nudge
-            this Y value until the "grnd" mesh lines up with her feet.
+            The character spawns at the world origin [0,0,0] and never
+            raycasts against the ground — she just always stands at y=0.
+            So the island's own walkable surface has to be dragged up to
+            meet her feet, not the other way around. -2 wasn't enough
+            (island was still floating above her); -25 is today's
+            deliberately drastic correction per spec — we'll dial this
+            in further once it's confirmed she's standing ON the ground
+            instead of hovering above/inside it.
           */}
-          <WorldModel url="/models/low_poly_forest.glb" targetSize={250} position={[0, -2, 0]} />
+          <WorldModel url="/models/low_poly_forest.glb" targetSize={250} position={[0, -25, 0]} />
 
           {/* Extra trees — enable once positioned/tested:
           <WorldModel url="/models/trees_optimized.glb" targetSize={30} position={[8, 0.1, -10]} />
