@@ -34,10 +34,18 @@ const WALK_SPEED = 2.2;
 const RUN_SPEED = 4.5;
 const TURN_LERP = 10;
 
-const CAM_DISTANCE_DEFAULT = 6;
-const CAM_MIN_DISTANCE = 3;
-const CAM_MAX_DISTANCE = 12;
-const CAM_HEAD_OFFSET = new THREE.Vector3(0, 1.5, 0);
+// Camera distance/head-offset are derived at runtime from the player's
+// *actual* rendered height (see `characterHeight` below) rather than fixed
+// world-unit constants. The raw GLB is skinned, so its measured height
+// varies with PLAYER_SCALE — hardcoding "6 units away" assumed a much
+// taller character than what's actually on screen, which is why the camera
+// used to look far away and aimed above her head. These multipliers are
+// relative to character height, so "close behind" stays correct even if
+// PLAYER_SCALE or the source model changes later.
+const CAM_DISTANCE_HEIGHT_MULT = 1.8;
+const CAM_MIN_HEIGHT_MULT = 1.0;
+const CAM_MAX_HEIGHT_MULT = 3.5;
+const CAM_HEAD_HEIGHT_RATIO = 0.85;
 const MIN_PITCH = 0.15;
 const MAX_PITCH = 1.45;
 const MOUSE_SENSITIVITY = 0.0028;
@@ -83,6 +91,74 @@ function PlayerModel() {
   const { scene: gunSceneSrc } = useGLTF("/gun.glb");
   const gunScene = useMemo(() => gunSceneSrc.clone(), [gunSceneSrc]);
 
+  // The exported GLB bakes an arbitrary translation into its root Armature
+  // node (an artifact of the Blender/Mixamo pipeline, unrelated to
+  // gameplay) — left alone, the mesh renders several units sideways from
+  // this component's own group pivot, with her feet floating above/below
+  // y=0 instead of sitting on it. We can't measure this with a Box3 like
+  // WorldModel does for the (static) forest, because Box3().setFromObject
+  // reads the *unskinned* geometry bounds and ignores skin deformation —
+  // for this skinned character that reports a bogus ~1cm-tall box. Bones
+  // don't have that problem: their world matrix already reflects the real
+  // skeleton pose via forward kinematics. So we locate the Hips bone (the
+  // horizontal center) and the lowest "toe" bone (the ground-contact
+  // point) and cancel that baked-in offset out here.
+  const { modelOffset, rawHeight } = useMemo(() => {
+    scene.updateMatrixWorld(true);
+    let hips: THREE.Object3D | null = null;
+    let lowestFootY = Infinity;
+    let headTopY = -Infinity;
+    scene.traverse((child) => {
+      const name = child.name;
+      if (!name) return;
+      if (/hips$/i.test(name)) hips = child;
+      if (/toe/i.test(name)) {
+        const p = new THREE.Vector3();
+        child.getWorldPosition(p);
+        lowestFootY = Math.min(lowestFootY, p.y);
+      }
+      if (/headtop/i.test(name)) {
+        const p = new THREE.Vector3();
+        child.getWorldPosition(p);
+        headTopY = Math.max(headTopY, p.y);
+      }
+    });
+
+    const pivot = new THREE.Vector3();
+    if (hips) (hips as THREE.Object3D).getWorldPosition(pivot);
+
+    const offset = new THREE.Vector3(
+      -pivot.x,
+      Number.isFinite(lowestFootY) ? -lowestFootY : -pivot.y,
+      -pivot.z,
+    );
+    const height =
+      Number.isFinite(headTopY) && Number.isFinite(lowestFootY)
+        ? headTopY - lowestFootY
+        : 1.7; // sane human-height fallback if bone names ever change
+
+    // eslint-disable-next-line no-console
+    console.log(
+      `[Player] Measured skeleton — hips=(${pivot.x.toFixed(3)}, ${pivot.y.toFixed(3)}, ${pivot.z.toFixed(3)}) ` +
+        `lowestFootY=${lowestFootY.toFixed(3)} headTopY=${headTopY.toFixed(3)} rawHeight=${height.toFixed(3)} ` +
+        `-> modelOffset=(${offset.x.toFixed(3)}, ${offset.y.toFixed(3)}, ${offset.z.toFixed(3)})`,
+    );
+
+    return { modelOffset: offset, rawHeight: height };
+  }, [scene]);
+
+  // Character height as it actually appears on screen (raw skeleton height
+  // scaled by PLAYER_SCALE) — camera framing below is derived from this so
+  // it always frames "close behind her" regardless of model/scale changes.
+  const characterHeight = rawHeight * PLAYER_SCALE;
+  const camDistanceDefault = characterHeight * CAM_DISTANCE_HEIGHT_MULT;
+  const camMinDistance = characterHeight * CAM_MIN_HEIGHT_MULT;
+  const camMaxDistance = characterHeight * CAM_MAX_HEIGHT_MULT;
+  const camHeadOffset = useMemo(
+    () => new THREE.Vector3(0, characterHeight * CAM_HEAD_HEIGHT_RATIO, 0),
+    [characterHeight],
+  );
+
   const [rightHand, setRightHand] = useState<THREE.Bone | null>(null);
   const [isGunEquipped, setIsGunEquipped] = useState(false);
 
@@ -93,13 +169,13 @@ function PlayerModel() {
 
   const yaw = useRef(Math.PI);
   const pitch = useRef(0.55);
-  const distance = useRef(CAM_DISTANCE_DEFAULT);
+  const distance = useRef(camDistanceDefault);
   // Mouse drag/wheel write to these "target" values; the actual yaw/pitch/
   // distance above chase them every frame in useFrame (see CAM_SMOOTH_RATE)
   // so orbiting/zooming feels smoothed instead of snapping instantly.
   const targetYaw = useRef(Math.PI);
   const targetPitch = useRef(0.55);
-  const targetDistance = useRef(CAM_DISTANCE_DEFAULT);
+  const targetDistance = useRef(camDistanceDefault);
   const isDragging = useRef(false);
   const lastMouse = useRef({ x: 0, y: 0 });
   const camInitialized = useRef(false);
@@ -206,8 +282,8 @@ function PlayerModel() {
     const onWheel = (e: WheelEvent) => {
       targetDistance.current += e.deltaY * ZOOM_SENSITIVITY;
       targetDistance.current = Math.max(
-        CAM_MIN_DISTANCE,
-        Math.min(CAM_MAX_DISTANCE, targetDistance.current),
+        camMinDistance,
+        Math.min(camMaxDistance, targetDistance.current),
       );
     };
 
@@ -262,7 +338,17 @@ function PlayerModel() {
     pitch.current += (targetPitch.current - pitch.current) * camLerp;
     distance.current += (targetDistance.current - distance.current) * camLerp;
 
-    _camForward.set(Math.sin(yaw.current), 0, Math.cos(yaw.current)).normalize();
+    // The orbit math below places the camera at
+    // `target + distance * (sin(yaw), ..., cos(yaw))`, i.e. that vector
+    // points from the player TOWARD the camera. The camera then looks back
+    // at the player (`camera.lookAt(_target)`), so the direction it's
+    // actually *facing* is the opposite of that offset. Movement needs to
+    // be relative to where the camera is looking, not where it's standing
+    // — using the un-negated offset here was the WASD-inversion bug (W
+    // walked toward the camera/viewer instead of away from it into the
+    // screen, and A/D were swapped along with it since strafe is derived
+    // from forward via a cross product).
+    _camForward.set(-Math.sin(yaw.current), 0, -Math.cos(yaw.current)).normalize();
     _camRight.crossVectors(_camForward, WORLD_UP).normalize();
 
     const { forward, backward, left, right, sprint } = getKeys();
@@ -292,7 +378,7 @@ function PlayerModel() {
     if (g.position.y < GROUND_Y) g.position.y = GROUND_Y;
 
     // Manual spherical camera — sole owner of camera.position.
-    _target.copy(g.position).add(CAM_HEAD_OFFSET);
+    _target.copy(g.position).add(camHeadOffset);
     _camOffset
       .set(
         Math.sin(yaw.current) * Math.cos(pitch.current),
@@ -326,7 +412,10 @@ function PlayerModel() {
 
   return (
     <group ref={group} position={PLAYER_SPAWN} scale={PLAYER_SCALE} dispose={null}>
-      <primitive object={scene} />
+      <primitive
+        object={scene}
+        position={[modelOffset.x, modelOffset.y, modelOffset.z]}
+      />
       {rightHand &&
         isGunEquipped &&
         createPortal(<primitive object={gunScene} />, rightHand)}
