@@ -159,8 +159,9 @@ export default function Scene({ showStats = false }: SceneProps) {
         <Environment preset="night" />
 
         <Suspense fallback={null}>
-          {/* Forest terrain world — auto-fitted to ~50 units wide */}
-          <WorldModel url="/models/low_poly_forest.glb" targetSize={50} position={[0, 0, 0]} />
+          {/* Forest terrain world — scaled down so it doesn't dwarf/occlude
+              the character near spawn (character stays untouched). */}
+          <WorldModel url="/models/low_poly_forest.glb" targetSize={16} position={[0, -0.05, 0]} />
 
           {/* Extra trees — enable once positioned/tested:
           <WorldModel url="/models/trees_optimized.glb" targetSize={30} position={[8, 0.1, -10]} />
