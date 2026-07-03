@@ -1,12 +1,13 @@
-import { Suspense, useRef, useEffect } from "react";
+import { Suspense, useRef, useEffect, useState } from "react";
 import { useGLTF, useAnimations } from "@react-three/drei";
-import { useFrame } from "@react-three/fiber";
+import { useFrame, createPortal } from "@react-three/fiber";
 import * as THREE from "three";
 
 export const PLAYER_WORLD_POS = new THREE.Vector3(0, 0, 0);
 export const PLAYER_WORLD_ROT = { y: 0 };
 
 useGLTF.preload("/anime_girl.glb");
+useGLTF.preload("/animations.glb");
 
 const MOVE_SPEED = 4;
 const TURN_SPEED = 2.8;
@@ -15,20 +16,44 @@ const pressedKeys = new Set<string>();
 
 function PlayerModel() {
   const group = useRef<THREE.Group>(null);
-  const { scene, animations } = useGLTF("/anime_girl.glb");
+
+  // Colored (skinned) model — this is what gets rendered
+  const { scene } = useGLTF("/anime_girl.glb");
+
+  // Grey model — only its animation clips are used
+  const { animations } = useGLTF("/animations.glb");
+
+  // Retarget: apply animations.glb clips onto anime_girl.glb's skeleton (group ref)
   const { actions } = useAnimations(animations, group);
 
+  const [rightHand, setRightHand] = useState<THREE.Bone | null>(null);
+
+  // Play "Idle" by default once actions are ready
   useEffect(() => {
-    console.log(actions);
+    const idle = actions["Idle"];
+    idle?.reset().fadeIn(0.3).play();
+    return () => {
+      idle?.fadeOut(0.3);
+    };
   }, [actions]);
 
-  scene.traverse((child) => {
-    if ((child as THREE.Mesh).isMesh) {
-      const mesh = child as THREE.Mesh;
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-    }
-  });
+  // One-time traversal: enable shadows + locate the right-hand bone
+  useEffect(() => {
+    let hand: THREE.Bone | null = null;
+    scene.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh) {
+        (child as THREE.Mesh).castShadow = true;
+        (child as THREE.Mesh).receiveShadow = true;
+      }
+      if (
+        (child as THREE.Bone).isBone &&
+        /(mixamorig)?right\s*hand/i.test(child.name)
+      ) {
+        hand = child as THREE.Bone;
+      }
+    });
+    setRightHand(hand);
+  }, [scene]);
 
   useEffect(() => {
     const onDown = (e: KeyboardEvent) => {
@@ -75,6 +100,17 @@ function PlayerModel() {
   return (
     <group ref={group} position={[0, 0, 0]} dispose={null}>
       <primitive object={scene} />
+
+      {/* Weapon attachment: portal a mesh directly into the bone's local space
+          so it inherits the bone's animated position/rotation every frame. */}
+      {rightHand &&
+        createPortal(
+          <mesh position={[0, 0.12, 0]} rotation={[Math.PI / 2, 0, 0]}>
+            <boxGeometry args={[0.04, 0.04, 0.35]} />
+            <meshStandardMaterial color="#c0c0c0" metalness={0.8} roughness={0.2} />
+          </mesh>,
+          rightHand,
+        )}
     </group>
   );
 }
