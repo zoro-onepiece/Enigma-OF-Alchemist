@@ -1,10 +1,32 @@
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { Canvas } from "@react-three/fiber";
-import { Grid, Environment, Sky, Stats, KeyboardControls } from "@react-three/drei";
+import { Grid, Environment, Sky, Stats, KeyboardControls, useGLTF } from "@react-three/drei";
+import * as THREE from "three";
 import Floor from "./Floor";
 import { WorldModel } from "./WorldModel";
 import Player, { PLAYER_SPAWN, playerKeyboardMap } from "../3d/Player";
 import GameHUD from "../hud/GameHUD";
+
+// TEMP DEBUG: logs the raw (un-fitted, un-scaled) bounding box of the forest
+// GLB straight from the file, so we can see its real min.y/max.y in the
+// console and compute the exact WorldModel Y-offset instead of guessing.
+// Safe to delete once the offset is confirmed.
+function ForestBoundsLogger({ url }: { url: string }) {
+  const { scene } = useGLTF(url);
+  useEffect(() => {
+    const box = new THREE.Box3().setFromObject(scene);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    // eslint-disable-next-line no-console
+    console.log("[ForestBoundsLogger] raw GLB bounding box", {
+      url,
+      min: { x: box.min.x, y: box.min.y, z: box.min.z },
+      max: { x: box.max.x, y: box.max.y, z: box.max.z },
+      size: { x: size.x, y: size.y, z: size.z },
+    });
+  }, [scene, url]);
+  return null;
+}
 
 // ─── WebGL capability check ───────────────────────────────────────────────────
 function isWebGLAvailable(): boolean {
@@ -143,6 +165,7 @@ export default function Scene({ showStats = false }: SceneProps) {
             instead of hovering above/inside it.
           */}
           <WorldModel url="/models/low_poly_forest.glb" targetSize={250} position={[0, -25, 0]} />
+          <ForestBoundsLogger url="/models/low_poly_forest.glb" />
 
           {/* Extra trees — enable once positioned/tested:
           <WorldModel url="/models/trees_optimized.glb" targetSize={30} position={[8, 0.1, -10]} />
