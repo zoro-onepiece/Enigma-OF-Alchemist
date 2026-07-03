@@ -1,13 +1,13 @@
 import { Suspense, useRef, useState } from "react";
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Grid, Environment, Sky, Stats, KeyboardControls } from "@react-three/drei";
+import type { ElementRef } from "react";
+import { Canvas, useFrame } from "@react-three/fiber";
+import { Grid, Environment, Sky, Stats, KeyboardControls, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
 import Floor from "./Floor";
 import { WorldModel } from "./WorldModel";
 import Player, {
   PLAYER_SPAWN,
   PLAYER_WORLD_POS,
-  PLAYER_WORLD_ROT,
   playerKeyboardMap,
 } from "../3d/Player";
 import GameHUD from "../hud/GameHUD";
@@ -25,43 +25,28 @@ function isWebGLAvailable(): boolean {
   }
 }
 
-// ─── Third-person follow camera ───────────────────────────────────────────────
-const _camTarget = new THREE.Vector3();
-const _camPos    = new THREE.Vector3();
-const _lookAt    = new THREE.Vector3();
+// ─── Fortnite-style camera rig ─────────────────────────────────────────────
+// OrbitControls owns the camera (mouse drag = 360° orbit, maxPolarAngle keeps
+// it from dipping under the map). This rig just keeps the orbit *target*
+// smoothly chasing the player's upper body every frame — OrbitControls'
+// own per-frame update() then repositions the camera to preserve whatever
+// angle/distance the player last set with the mouse. That's what gives the
+// "camera follows, but you can still freely look around" Fortnite feel.
+const _cameraRigTarget = new THREE.Vector3();
 
-function FollowCamera() {
-  const { camera } = useThree();
+type OrbitControlsHandle = ElementRef<typeof OrbitControls>;
 
-  // Set initial camera pose once — matches PLAYER_SPAWN so the camera
-  // doesn't pop from the world origin to the (now far-away) spawn point.
-  const initialised = useRef(false);
-  if (!initialised.current) {
-    const [sx, sy, sz] = PLAYER_SPAWN;
-    camera.position.set(sx, sy + 3, sz + 8);
-    camera.lookAt(sx, sy + 1.2, sz);
-    initialised.current = true;
-  }
-
+function CameraRig({ controlsRef }: { controlsRef: React.RefObject<OrbitControlsHandle | null> }) {
   useFrame(() => {
-    const px = PLAYER_WORLD_POS.x;
-    const py = PLAYER_WORLD_POS.y;
-    const pz = PLAYER_WORLD_POS.z;
-    const ry = PLAYER_WORLD_ROT.y;
-
-    // Offset: 7 units behind the player, 3 units up — rotates with the player
-    const offsetX = Math.sin(ry) * 7;
-    const offsetZ = Math.cos(ry) * 7;
-
-    _camPos.set(px + offsetX, py + 3.5, pz + offsetZ);
-    _lookAt.set(px, py + 1.4, pz);
-
-    // Smooth follow
-    camera.position.lerp(_camPos, 0.06);
-    _camTarget.lerp(_lookAt, 0.1);
-    camera.lookAt(_camTarget);
+    const controls = controlsRef.current;
+    if (!controls) return;
+    _cameraRigTarget.set(
+      PLAYER_WORLD_POS.x,
+      PLAYER_WORLD_POS.y + 1.4, // look at upper body / head height
+      PLAYER_WORLD_POS.z,
+    );
+    controls.target.lerp(_cameraRigTarget, 0.15);
   });
-
   return null;
 }
 
@@ -93,6 +78,7 @@ export default function Scene({ showStats = false }: SceneProps) {
   const [score] = useState(340);
   const [essences] = useState(3);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const controlsRef = useRef<OrbitControlsHandle | null>(null);
 
   const handleConnectWallet = () => {
     // Placeholder — Magic Labs + Openfort wiring happens here for Arbitrum Sepolia.
@@ -116,8 +102,22 @@ export default function Scene({ showStats = false }: SceneProps) {
       >
         {showStats && <Stats />}
 
-        {/* Follow camera (replaces OrbitControls — conflicts with movement) */}
-        <FollowCamera />
+        {/* Fortnite-style camera: OrbitControls handles mouse-driven 360°
+            orbit (enablePan disabled so you can't drag the world around;
+            maxPolarAngle caps the camera at horizon height so it can't dip
+            below the map). CameraRig keeps the orbit target glued to the
+            player so the camera follows her as she moves. */}
+        <OrbitControls
+          ref={controlsRef}
+          makeDefault
+          enablePan={false}
+          maxPolarAngle={Math.PI / 2}
+          minDistance={3}
+          maxDistance={12}
+          enableDamping
+          dampingFactor={0.08}
+        />
+        <CameraRig controlsRef={controlsRef} />
 
         {/* ── Lighting ──────────────────────────────────────────────────── */}
         {/* Soft fill for the anime character skin */}
@@ -173,21 +173,19 @@ export default function Scene({ showStats = false }: SceneProps) {
 
         <Suspense fallback={null}>
           {/*
-            Forest is now the real walkable world (not a diorama).
-            targetSize=250 makes the model's widest axis span 250 world
-            units, so trees read as 3-5x the character's height.
+            Forest is the walkable world (not a diorama). targetSize=250
+            makes the model's widest axis span 250 world units, so trees
+            read as 3-5x the character's height.
 
-            position.y=-56 is NOT a guess: measured the raw GLB's mesh
-            accessors directly (grnd top vs. the model's overall lowest
-            point, which is the slope mesh) and solved for the offset
-            that puts the "grnd" mesh's walkable top surface exactly at
-            world y=0 — the height the character always stands at (she
-            has no vertical/ground-raycast movement, see Player.tsx).
-            Final value: position.y = -(grndTopLocal - overallMinLocal) * scale
-                                     = -(1.332 - (-0.176)) * (250/6.73)
-                                     ≈ -56.0
+            The character now spawns at the world origin, so the island
+            just needs to sit slightly below her feet — position={[0,-2,0]}
+            per spec. This is a starting value, not a measured one (the
+            previous -56 offset was solved for a spawn point far from the
+            origin and no longer applies now that movement is camera-
+            relative from [0,0,0]). If she visibly floats or sinks, nudge
+            this Y value until the "grnd" mesh lines up with her feet.
           */}
-          <WorldModel url="/models/low_poly_forest.glb" targetSize={250} position={[0, -56, 0]} />
+          <WorldModel url="/models/low_poly_forest.glb" targetSize={250} position={[0, -2, 0]} />
 
           {/* Extra trees — enable once positioned/tested:
           <WorldModel url="/models/trees_optimized.glb" targetSize={30} position={[8, 0.1, -10]} />
@@ -230,10 +228,11 @@ export default function Scene({ showStats = false }: SceneProps) {
       {/* ── Controls hint overlay ─────────────────────────────────────────── */}
       <div className="absolute bottom-5 left-1/2 -translate-x-1/2 flex items-center gap-3 pointer-events-none select-none">
         {[
-          { keys: "W / ↑",   label: "Forward"  },
-          { keys: "S / ↓",   label: "Backward" },
-          { keys: "A / ←",   label: "Turn L"   },
-          { keys: "D / →",   label: "Turn R"   },
+          { keys: "W / ↑",   label: "Forward"    },
+          { keys: "S / ↓",   label: "Backward"   },
+          { keys: "A / ←",   label: "Strafe L"   },
+          { keys: "D / →",   label: "Strafe R"   },
+          { keys: "Mouse",   label: "Look Around"},
         ].map(({ keys, label }) => (
           <div
             key={label}

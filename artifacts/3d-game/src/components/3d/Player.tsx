@@ -1,21 +1,22 @@
 import { Suspense, useRef, useEffect, useState, useMemo } from "react";
 import { useGLTF, useAnimations, useKeyboardControls } from "@react-three/drei";
-import { useFrame, createPortal } from "@react-three/fiber";
+import { useFrame, useThree, createPortal } from "@react-three/fiber";
 import * as THREE from "three";
 
-// Spawn on an open grassy patch of the "grnd" mesh, clear of the water mesh.
-// Computed from the forest GLB's own mesh bounds (not eyeballed): at
-// targetSize=250 the model's world offset re-centers X/Z to 0, so
-// worldX = (localX - modelCenterX) * scale, worldZ = (localZ - modelCenterZ) * scale.
-// Picked local (x=0, z=2.5) — inside grnd's footprint (x: -3.1..2.9, z: 0..3.4),
-// safely past water's extent (z: -1.0..1.7). scale = 250/6.73 ≈ 37.15.
-export const PLAYER_SPAWN: [number, number, number] = [13.56, 0, 48.85];
+// Character now spawns at the world origin — scale/position tuned for a
+// Fortnite-style camera-relative controller (see useFrame below).
+export const PLAYER_SPAWN: [number, number, number] = [0, 0, 0];
 export const PLAYER_WORLD_POS = new THREE.Vector3(...PLAYER_SPAWN);
 export const PLAYER_WORLD_ROT = { y: 0 };
 
+// The GLB is modeled at a much larger scale than the scene expects —
+// 0.4 brings her in line with the surrounding trees/geometry.
+const PLAYER_SCALE = 0.4;
+
 // ─── Keyboard control map ──────────────────────────────────────────────────
 // Consumed by <KeyboardControls map={playerKeyboardMap}> wrapping the
-// <Canvas> in Scene.tsx.
+// <Canvas> in Scene.tsx. W/A/S/D are camera-relative (forward = "away from
+// camera", not a fixed world axis) — see the movement math in useFrame.
 export enum PlayerControl {
   forward = "forward",
   backward = "backward",
@@ -41,8 +42,18 @@ const WALK_SPEED = 2.2;
 const RUN_SPEED = 4.5;
 const TURN_LERP = 10; // higher = snappier facing rotation
 
+const WORLD_UP = new THREE.Vector3(0, 1, 0);
+
+// Reusable scratch vectors (avoid per-frame GC pressure).
+const _camForward = new THREE.Vector3();
+const _camRight = new THREE.Vector3();
+const _moveDir = new THREE.Vector3();
+const _desiredCamPos = new THREE.Vector3();
+const _lookAtTarget = new THREE.Vector3();
+
 function PlayerModel() {
   const group = useRef<THREE.Group>(null);
+  const { camera } = useThree();
 
   // Final animated character: mesh + armature + 6 clips
   // ('idle', 'walk', 'run', 'melee', 'gun', 'gun-fire').
@@ -151,21 +162,34 @@ function PlayerModel() {
     const speed = sprint ? RUN_SPEED : WALK_SPEED;
 
     if (moving) {
-      // World-space movement vector from WASD (x: strafe, z: forward/back).
-      const moveX = (left ? 1 : 0) - (right ? 1 : 0);
-      const moveZ = (backward ? 1 : 0) - (forward ? 1 : 0);
-      const len = Math.hypot(moveX, moveZ) || 1;
-      const dirX = moveX / len;
-      const dirZ = moveZ / len;
+      // ── Camera-relative movement ─────────────────────────────────────
+      // "Forward" is whatever direction the camera is currently facing
+      // (flattened to the ground plane), not a fixed world axis. Rotating
+      // the camera with the mouse rotates what W/A/S/D mean, like Fortnite.
+      camera.getWorldDirection(_camForward);
+      _camForward.y = 0;
+      _camForward.normalize();
+      _camRight.crossVectors(_camForward, WORLD_UP).normalize();
 
-      g.position.x += dirX * speed * delta;
-      g.position.z += dirZ * speed * delta;
+      const forwardInput = (forward ? 1 : 0) - (backward ? 1 : 0);
+      const strafeInput = (right ? 1 : 0) - (left ? 1 : 0);
 
-      // Smoothly rotate the character to face the movement direction.
-      const targetAngle = Math.atan2(dirX, dirZ);
-      let diff = targetAngle - g.rotation.y;
-      diff = Math.atan2(Math.sin(diff), Math.cos(diff)); // shortest angular path
-      g.rotation.y += diff * Math.min(1, TURN_LERP * delta);
+      _moveDir
+        .set(0, 0, 0)
+        .addScaledVector(_camForward, forwardInput)
+        .addScaledVector(_camRight, strafeInput);
+
+      if (_moveDir.lengthSq() > 1e-6) {
+        _moveDir.normalize();
+
+        g.position.addScaledVector(_moveDir, speed * delta);
+
+        // Smoothly rotate the character to face the movement direction.
+        const targetAngle = Math.atan2(_moveDir.x, _moveDir.z);
+        let diff = targetAngle - g.rotation.y;
+        diff = Math.atan2(Math.sin(diff), Math.cos(diff)); // shortest angular path
+        g.rotation.y += diff * Math.min(1, TURN_LERP * delta);
+      }
     }
 
     // ── Animation blending ────────────────────────────────────────────
@@ -184,7 +208,7 @@ function PlayerModel() {
   });
 
   return (
-    <group ref={group} position={PLAYER_SPAWN} dispose={null}>
+    <group ref={group} position={PLAYER_SPAWN} scale={PLAYER_SCALE} dispose={null}>
       <primitive object={scene} />
 
       {/* Weapon attachment: portal the gun mesh directly into the bone's
@@ -197,24 +221,9 @@ function PlayerModel() {
   );
 }
 
-function PlayerFallback() {
-  return (
-    <group position={PLAYER_SPAWN}>
-      <mesh position={[0, 0.85, 0]} castShadow receiveShadow>
-        <capsuleGeometry args={[0.35, 1.1, 8, 16]} />
-        <meshStandardMaterial color="#7c3aed" roughness={0.4} metalness={0.5} />
-      </mesh>
-      <mesh position={[0, 1.85, 0]} castShadow>
-        <sphereGeometry args={[0.32, 16, 16]} />
-        <meshStandardMaterial color="#a78bfa" roughness={0.3} metalness={0.4} />
-      </mesh>
-    </group>
-  );
-}
-
 export default function Player() {
   return (
-    <Suspense fallback={<PlayerFallback />}>
+    <Suspense fallback={null}>
       <PlayerModel />
     </Suspense>
   );
