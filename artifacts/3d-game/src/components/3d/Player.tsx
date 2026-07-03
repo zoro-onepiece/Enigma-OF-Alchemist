@@ -3,7 +3,14 @@ import { useGLTF, useAnimations } from "@react-three/drei";
 import { useFrame, createPortal } from "@react-three/fiber";
 import * as THREE from "three";
 
-export const PLAYER_WORLD_POS = new THREE.Vector3(0, 0, 0);
+// Spawn on an open grassy patch of the "grnd" mesh, clear of the water mesh.
+// Computed from the forest GLB's own mesh bounds (not eyeballed): at
+// targetSize=250 the model's world offset re-centers X/Z to 0, so
+// worldX = (localX - modelCenterX) * scale, worldZ = (localZ - modelCenterZ) * scale.
+// Picked local (x=0, z=2.5) — inside grnd's footprint (x: -3.1..2.9, z: 0..3.4),
+// safely past water's extent (z: -1.0..1.7). scale = 250/6.73 ≈ 37.15.
+export const PLAYER_SPAWN: [number, number, number] = [13.56, 0, 48.85];
+export const PLAYER_WORLD_POS = new THREE.Vector3(...PLAYER_SPAWN);
 export const PLAYER_WORLD_ROT = { y: 0 };
 
 useGLTF.preload("/anime_girl.glb");
@@ -98,7 +105,7 @@ function PlayerModel() {
   });
 
   return (
-    <group ref={group} position={[0, 0, 0]} dispose={null}>
+    <group ref={group} position={PLAYER_SPAWN} dispose={null}>
       <primitive object={scene} />
 
       {/* Weapon attachment: portal a mesh directly into the bone's local space
@@ -117,7 +124,7 @@ function PlayerModel() {
 
 function PlayerFallback() {
   return (
-    <group position={[0, 0, 0]}>
+    <group position={PLAYER_SPAWN}>
       <mesh position={[0, 0.85, 0]} castShadow receiveShadow>
         <capsuleGeometry args={[0.35, 1.1, 8, 16]} />
         <meshStandardMaterial color="#7c3aed" roughness={0.4} metalness={0.5} />

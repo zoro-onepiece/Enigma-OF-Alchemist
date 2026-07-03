@@ -4,7 +4,7 @@ import { Grid, Environment, Sky, Stats } from "@react-three/drei";
 import * as THREE from "three";
 import Floor from "./Floor";
 import { WorldModel } from "./WorldModel";
-import Player, { PLAYER_WORLD_POS, PLAYER_WORLD_ROT } from "../3d/Player";
+import Player, { PLAYER_SPAWN, PLAYER_WORLD_POS, PLAYER_WORLD_ROT } from "../3d/Player";
 import GameHUD from "../hud/GameHUD";
 
 // ─── WebGL capability check ───────────────────────────────────────────────────
@@ -28,11 +28,13 @@ const _lookAt    = new THREE.Vector3();
 function FollowCamera() {
   const { camera } = useThree();
 
-  // Set initial camera pose once
+  // Set initial camera pose once — matches PLAYER_SPAWN so the camera
+  // doesn't pop from the world origin to the (now far-away) spawn point.
   const initialised = useRef(false);
   if (!initialised.current) {
-    camera.position.set(0, 3, 8);
-    camera.lookAt(0, 1.2, 0);
+    const [sx, sy, sz] = PLAYER_SPAWN;
+    camera.position.set(sx, sy + 3, sz + 8);
+    camera.lookAt(sx, sy + 1.2, sz);
     initialised.current = true;
   }
 
@@ -115,43 +117,48 @@ export default function Scene({ showStats = false }: SceneProps) {
         {/* Soft fill for the anime character skin */}
         <ambientLight intensity={0.55} color="#d4c8ff" />
 
-        {/* Key light — warm from front-left */}
+        {/* Key light — warm from front-left. Shadow frustum is centered on
+            PLAYER_SPAWN (not the world origin) and widened since the
+            character now lives ~50 units out into the scaled-up forest. */}
         <directionalLight
-          position={[6, 12, 8]}
+          position={[PLAYER_SPAWN[0] + 6, 12, PLAYER_SPAWN[2] + 8]}
           intensity={1.6}
           castShadow
           shadow-mapSize={[2048, 2048]}
           shadow-camera-near={0.5}
-          shadow-camera-far={60}
-          shadow-camera-left={-15}
-          shadow-camera-right={15}
-          shadow-camera-top={15}
-          shadow-camera-bottom={-15}
+          shadow-camera-far={80}
+          shadow-camera-left={-25}
+          shadow-camera-right={25}
+          shadow-camera-top={25}
+          shadow-camera-bottom={-25}
+          target-position={PLAYER_SPAWN}
           color="#fff5e0"
         />
 
         {/* Rim light — cool from behind to separate character from bg */}
         <directionalLight
-          position={[-4, 6, -8]}
+          position={[PLAYER_SPAWN[0] - 4, 6, PLAYER_SPAWN[2] - 8]}
           intensity={0.6}
           color="#8ecfff"
         />
 
         {/* Purple fill from below for anime dungeon vibe */}
-        <pointLight position={[0, 0.3, 0]} intensity={0.4} color="#7c3aed" distance={8} />
+        <pointLight position={[PLAYER_SPAWN[0], 0.3, PLAYER_SPAWN[2]]} intensity={0.4} color="#7c3aed" distance={8} />
 
-        {/* Shadow-casting sun light (from uploaded Scene.jsx world lighting) */}
+        {/* Shadow-casting sun light — also re-centered on the spawn area
+            since the forest is now ~250 units across. */}
         <directionalLight
           castShadow
-          position={[15, 25, 10]}
+          position={[PLAYER_SPAWN[0] + 15, 25, PLAYER_SPAWN[2] + 10]}
           intensity={1.4}
           shadow-mapSize={[2048, 2048]}
-          shadow-camera-left={-40}
-          shadow-camera-right={40}
-          shadow-camera-top={40}
-          shadow-camera-bottom={-40}
+          shadow-camera-left={-60}
+          shadow-camera-right={60}
+          shadow-camera-top={60}
+          shadow-camera-bottom={-60}
           shadow-camera-near={0.5}
-          shadow-camera-far={100}
+          shadow-camera-far={150}
+          target-position={PLAYER_SPAWN}
         />
 
         {/* ── Environment & ground ──────────────────────────────────────── */}
@@ -159,9 +166,22 @@ export default function Scene({ showStats = false }: SceneProps) {
         <Environment preset="night" />
 
         <Suspense fallback={null}>
-          {/* Forest terrain world — scaled down so it doesn't dwarf/occlude
-              the character near spawn (character stays untouched). */}
-          <WorldModel url="/models/low_poly_forest.glb" targetSize={16} position={[0, -0.05, 0]} />
+          {/*
+            Forest is now the real walkable world (not a diorama).
+            targetSize=250 makes the model's widest axis span 250 world
+            units, so trees read as 3-5x the character's height.
+
+            position.y=-56 is NOT a guess: measured the raw GLB's mesh
+            accessors directly (grnd top vs. the model's overall lowest
+            point, which is the slope mesh) and solved for the offset
+            that puts the "grnd" mesh's walkable top surface exactly at
+            world y=0 — the height the character always stands at (she
+            has no vertical/ground-raycast movement, see Player.tsx).
+            Final value: position.y = -(grndTopLocal - overallMinLocal) * scale
+                                     = -(1.332 - (-0.176)) * (250/6.73)
+                                     ≈ -56.0
+          */}
+          <WorldModel url="/models/low_poly_forest.glb" targetSize={250} position={[0, -56, 0]} />
 
           {/* Extra trees — enable once positioned/tested:
           <WorldModel url="/models/trees_optimized.glb" targetSize={30} position={[8, 0.1, -10]} />
@@ -171,6 +191,7 @@ export default function Scene({ showStats = false }: SceneProps) {
         <Floor />
 
         <Grid
+          visible={false}
           position={[0, 0.001, 0]}
           args={[80, 80]}
           cellSize={1}
