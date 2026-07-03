@@ -1,0 +1,230 @@
+Fix the 3rd-person character controller in my React Three Fiber game. The issues are:
+- WASD keys move the character in opposite directions to what's expected (A moves right, D moves left)
+- The camera doesn't stay locked behind the character as she moves
+- Movement feels spherical/world-relative instead of camera-relative on flat ground
+
+Please fix these THREE files with the following exact changes:
+
+FILE 1: src/components/3d/Player.tsx
+Replace entire file with this working camera-relative controller. The critical fix is:
+- Calculate camera-relative forward/right vectors using ONLY the horizontal (XZ) plane of the camera's look direction
+- Apply those vectors to WASD movement so W always moves away from camera, S toward camera, A left of camera, D right of camera
+- Smoothly rotate character to face movement direction
+- Store yaw/pitch in refs, calculate camera position manually in useFrame (NO OrbitControls)
+
+```tsx
+import { useRef, useEffect, useMemo, useState } from 'react';
+import { useFrame, useThree, createPortal } from '@react-three/fiber';
+import { useGLTF, useAnimations } from '@react-three/drei';
+import * as THREE from 'three';
+import { useGameLoop } from '../../hooks/useGameLoop';
+
+const MOVE_SPEED = 5;
+const ROTATION_SPEED = 10;
+const CAMERA_DISTANCE = 8;
+const CAMERA_HEIGHT = 4;
+const MIN_POLAR_ANGLE = 0.2;
+const MAX_POLAR_ANGLE = Math.PI / 2.2;
+
+export function Player() {
+  const groupRef = useRef<THREE.Group>(null);
+  const { scene, animations } = useGLTF('/final_player3.glb');
+  const gunModel = useGLTF('/gun.glb');
+  
+  const { actions, mixer } = useAnimations(animations, groupRef);
+  const { camera, gl } = useThree();
+  
+  // Camera orbit state
+  const yaw = useRef(Math.PI);
+  const pitch = useRef(0.4);
+  const distance = useRef(CAMERA_DISTANCE);
+  const isDragging = useRef(false);
+  const lastMouse = useRef({ x: 0, y: 0 });
+  
+  // Movement state
+  const keys = useRef<Record<string, boolean>>({});
+  const currentAnim = useRef('idle');
+  const targetRotation = useRef(0);
+  const currentRotation = useRef(0);
+  
+  // Weapon attachment
+  const [weaponTarget, setWeaponTarget] = useState<THREE.Object3D | null>(null);
+  
+  const characterClone = useMemo(() => {
+    const clone = scene.clone();
+    clone.traverse((child) => {
+      if (child instanceof THREE.SkinnedMesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+      }
+    });
+    return clone;
+  }, [scene]);
+
+  useEffect(() => {
+    if (groupRef.current) {
+      const rightHand = groupRef.current.getObjectByName('mixamorigRightHand');
+      if (rightHand) setWeaponTarget(rightHand);
+    }
+  }, [characterClone]);
+
+  useEffect(() => {
+    if (actions['idle']) {
+      actions['idle'].reset().play();
+      currentAnim.current = 'idle';
+    }
+  }, [actions]);
+
+  // Keyboard handlers
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      keys.current[e.key.toLowerCase()] = true;
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      keys.current[e.key.toLowerCase()] = false;
+    };
+    
+    // Mouse handlers for camera orbit
+    const handleMouseDown = (e: MouseEvent) => {
+      isDragging.current = true;
+      lastMouse.current = { x: e.clientX, y: e.clientY };
+    };
+    const handleMouseUp = () => {
+      isDragging.current = false;
+    };
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDragging.current) return;
+      const dx = e.clientX - lastMouse.current.x;
+      const dy = e.clientY - lastMouse.current.y;
+      yaw.current -= dx * 0.005;
+      pitch.current = Math.max(MIN_POLAR_ANGLE, Math.min(MAX_POLAR_ANGLE, pitch.current + dy * 0.005));
+      lastMouse.current = { x: e.clientX, y: e.clientY };
+    };
+    const handleWheel = (e: WheelEvent) => {
+      distance.current = Math.max(3, Math.min(15, distance.current + e.deltaY * 0.01));
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    gl.domElement.addEventListener('mousedown', handleMouseDown);
+    window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('mousemove', handleMouseMove);
+    gl.domElement.addEventListener('wheel', handleWheel);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      gl.domElement.removeEventListener('mousedown', handleMouseDown);
+      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('mousemove', handleMouseMove);
+      gl.domElement.removeEventListener('wheel', handleWheel);
+    };
+  }, [gl]);
+
+  useFrame((_, delta) => {
+    if (!groupRef.current) return;
+
+    const group = groupRef.current;
+    
+    // Camera position from spherical coords
+    const camX = Math.sin(yaw.current) * Math.cos(pitch.current) * distance.current;
+    const camY = Math.sin(pitch.current) * distance.current + CAMERA_HEIGHT;
+    const camZ = Math.cos(yaw.current) * Math.cos(pitch.current) * distance.current;
+    
+    const cameraTarget = new THREE.Vector3(
+      group.position.x,
+      group.position.y + 1.5,
+      group.position.z
+    );
+    
+    camera.position.lerp(
+      new THREE.Vector3(
+        cameraTarget.x + camX,
+        cameraTarget.y + camY,
+        cameraTarget.z + camZ
+      ),
+      0.1
+    );
+    camera.lookAt(cameraTarget);
+
+    // Calculate camera-relative movement (CRITICAL FIX)
+    // Get camera's forward and right vectors projected to horizontal (XZ) plane
+    const cameraForward = new THREE.Vector3();
+    camera.getWorldDirection(cameraForward);
+    cameraForward.y = 0;
+    cameraForward.normalize();
+    
+    const cameraRight = new THREE.Vector3();
+    cameraRight.crossVectors(cameraForward, new THREE.Vector3(0, 1, 0)).normalize();
+
+    let moveX = 0;
+    let moveZ = 0;
+    
+    // W/S = forward/backward along camera forward vector
+    if (keys.current['w']) moveZ += 1;
+    if (keys.current['s']) moveZ -= 1;
+    // A/D = left/right along camera right vector
+    if (keys.current['a']) moveX -= 1;
+    if (keys.current['d']) moveX += 1;
+
+    const isMoving = Math.abs(moveX) > 0.01 || Math.abs(moveZ) > 0.01;
+
+    if (isMoving) {
+      // Normalize input
+      const inputLength = Math.sqrt(moveX * moveX + moveZ * moveZ);
+      moveX /= inputLength;
+      moveZ /= inputLength;
+
+      // Build movement vector from camera-relative directions
+      const moveVector = new THREE.Vector3(0, 0, 0);
+      moveVector.addScaledVector(cameraForward, moveZ);
+      moveVector.addScaledVector(cameraRight, moveX);
+      moveVector.normalize();
+
+      // Move the character
+      group.position.x += moveVector.x * MOVE_SPEED * delta;
+      group.position.z += moveVector.z * MOVE_SPEED * delta;
+
+      // Calculate target rotation (face movement direction)
+      targetRotation.current = Math.atan2(moveVector.x, moveVector.z);
+
+      // Play walk animation
+      if (currentAnim.current !== 'walk') {
+        if (actions['idle']) actions['idle'].stop();
+        if (actions['walk']) {
+          actions['walk'].reset().play();
+          currentAnim.current = 'walk';
+        }
+      }
+    } else {
+      if (currentAnim.current !== 'idle') {
+        if (actions['walk']) actions['walk'].stop();
+        if (actions['idle']) {
+          actions['idle'].reset().play();
+          currentAnim.current = 'idle';
+        }
+      }
+    }
+
+    // Smooth rotation
+    let rotDiff = targetRotation.current - currentRotation.current;
+    while (rotDiff > Math.PI) rotDiff -= Math.PI * 2;
+    while (rotDiff < -Math.PI) rotDiff += Math.PI * 2;
+    currentRotation.current += rotDiff * Math.min(ROTATION_SPEED * delta, 1);
+    group.rotation.y = currentRotation.current;
+  });
+
+  return (
+    <>
+      <group ref={groupRef} position={[0, 0, 0]}>
+        <primitive object={characterClone} />
+      </group>
+      {weaponTarget && gunModel.scene && (
+        <>{createPortal(
+          <primitive object={gunModel.scene.clone()} position={[0, 0, 0]} rotation={[0, Math.PI / 2, 0]} scale={0.01} />,
+          weaponTarget
+        )}</>
+      )}
+    </>
+  );
+}
