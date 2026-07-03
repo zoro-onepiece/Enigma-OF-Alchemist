@@ -1,9 +1,11 @@
-import { useRef } from "react";
+import { Suspense, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Grid, Environment, Stats } from "@react-three/drei";
+import { Grid, Environment, Sky, Stats } from "@react-three/drei";
 import * as THREE from "three";
 import Floor from "./Floor";
+import { WorldModel } from "./WorldModel";
 import Player, { PLAYER_WORLD_POS, PLAYER_WORLD_ROT } from "../3d/Player";
+import GameHUD from "../hud/GameHUD";
 
 // ─── WebGL capability check ───────────────────────────────────────────────────
 function isWebGLAvailable(): boolean {
@@ -80,6 +82,17 @@ interface SceneProps {
 }
 
 export default function Scene({ showStats = false }: SceneProps) {
+  const [health] = useState(72);
+  const [score] = useState(340);
+  const [essences] = useState(3);
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
+
+  const handleConnectWallet = () => {
+    // Placeholder — Magic Labs + Openfort wiring happens here for Arbitrum Sepolia.
+    console.log("TODO: connect wallet (Arbitrum Sepolia)");
+    setWalletAddress("0x1234abcd5678ef901234abcd5678ef901234abcd");
+  };
+
   if (!isWebGLAvailable()) {
     return <WebGLFallback />;
   }
@@ -88,6 +101,7 @@ export default function Scene({ showStats = false }: SceneProps) {
     <div className="w-full h-full relative">
       <Canvas
         shadows
+        dpr={[1, 1.5]}
         camera={{ position: [0, 3, 8], fov: 50, near: 0.1, far: 500 }}
         gl={{ antialias: true, alpha: false }}
         style={{ background: "#0a0a18" }}
@@ -126,8 +140,32 @@ export default function Scene({ showStats = false }: SceneProps) {
         {/* Purple fill from below for anime dungeon vibe */}
         <pointLight position={[0, 0.3, 0]} intensity={0.4} color="#7c3aed" distance={8} />
 
+        {/* Shadow-casting sun light (from uploaded Scene.jsx world lighting) */}
+        <directionalLight
+          castShadow
+          position={[15, 25, 10]}
+          intensity={1.4}
+          shadow-mapSize={[2048, 2048]}
+          shadow-camera-left={-40}
+          shadow-camera-right={40}
+          shadow-camera-top={40}
+          shadow-camera-bottom={-40}
+          shadow-camera-near={0.5}
+          shadow-camera-far={100}
+        />
+
         {/* ── Environment & ground ──────────────────────────────────────── */}
+        <Sky sunPosition={[15, 25, 10]} turbidity={6} rayleigh={1.2} />
         <Environment preset="night" />
+
+        <Suspense fallback={null}>
+          {/* Forest terrain world — auto-fitted to ~50 units wide */}
+          <WorldModel url="/models/low_poly_forest.glb" targetSize={50} position={[0, 0, 0]} />
+
+          {/* Extra trees — enable once positioned/tested:
+          <WorldModel url="/models/trees_optimized.glb" targetSize={30} position={[8, 0.1, -10]} />
+          */}
+        </Suspense>
 
         <Floor />
 
@@ -149,6 +187,16 @@ export default function Scene({ showStats = false }: SceneProps) {
         {/* ── Player ────────────────────────────────────────────────────── */}
         <Player />
       </Canvas>
+
+      {/* ── Alchemist HUD overlay ────────────────────────────────────────── */}
+      <GameHUD
+        health={health}
+        maxHealth={100}
+        score={score}
+        essences={essences}
+        walletAddress={walletAddress as never}
+        onConnectWallet={handleConnectWallet}
+      />
 
       {/* ── Controls hint overlay ─────────────────────────────────────────── */}
       <div className="absolute bottom-5 left-1/2 -translate-x-1/2 flex items-center gap-3 pointer-events-none select-none">
