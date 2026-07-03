@@ -18,3 +18,11 @@ expertMode = true
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 20000
+
+[userenv]
+
+[userenv.shared]
+VITE_MAGIC_PUBLISHABLE_KEY = "pk_live_30AFE3EEEDD774DF"
+
+[nix]
+packages = ["tree"]

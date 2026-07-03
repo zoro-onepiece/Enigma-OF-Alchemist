@@ -1,15 +1,59 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import Scene from "@/components/scene/Scene";
 import NotFound from "@/pages/not-found";
+import MainMenu from "@/MainMenu";
+import {
+  loginWithGoogle,
+  handleOAuthRedirect,
+  getExistingSession,
+} from "@/lib/magic";
 
 const queryClient = new QueryClient();
 
 function Home() {
   const [showStats, setShowStats] = useState(false);
+
+  // ── Auth state ─────────────────────────────────────────────
+  // walletAddress === null  → show MainMenu
+  // walletAddress === "0x…" → show game (Scene mounts its own Canvas + HUD)
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  // On first load: (1) complete Google OAuth redirect if we just
+  // came back from Google, else (2) restore an existing session.
+  useEffect(() => {
+    (async () => {
+      const fromRedirect = await handleOAuthRedirect();
+      if (fromRedirect) {
+        setWalletAddress(fromRedirect);
+        setAuthLoading(false);
+        return;
+      }
+      const existing = await getExistingSession();
+      if (existing) setWalletAddress(existing);
+      setAuthLoading(false);
+    })();
+  }, []);
+
+  const handleLogin = async () => {
+    setAuthLoading(true);
+    try {
+      await loginWithGoogle(); // redirects away to Google
+    } catch (err) {
+      console.error("Login failed:", err);
+      setAuthLoading(false);
+    }
+  };
+
+  const isLoggedIn = Boolean(walletAddress);
+
+  if (!isLoggedIn) {
+    return <MainMenu onLogin={handleLogin} isLoading={authLoading} />;
+  }
 
   return (
     <div className="flex flex-col h-screen bg-[#0a0a14] text-white overflow-hidden">
@@ -39,7 +83,8 @@ function Home() {
         </div>
       </header>
 
-      {/* 3D Canvas — fills the remaining height */}
+      {/* 3D Canvas — fills the remaining height. Only mounted after login,
+          so heavy GLB models don't load behind the menu. */}
       <main className="flex-1 min-h-0">
         <Scene showStats={showStats} />
       </main>
