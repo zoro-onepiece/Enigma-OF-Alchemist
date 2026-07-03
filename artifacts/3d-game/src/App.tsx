@@ -14,6 +14,12 @@ import {
 
 const queryClient = new QueryClient();
 
+// TEMP DEV BYPASS: set to true to skip the Main Menu / Magic login gate and
+// render the 3D Scene directly for testing character mechanics.
+// Flip back to false to restore the normal login flow. Does not touch
+// MainMenu.tsx or the auth logic — just skips the gate in Home().
+const BYPASS_AUTH_FOR_TESTING = true;
+
 function Home() {
   const [showStats, setShowStats] = useState(false);
 
@@ -49,7 +55,7 @@ function Home() {
     }
   };
 
-  const isLoggedIn = Boolean(walletAddress);
+  const isLoggedIn = BYPASS_AUTH_FOR_TESTING || Boolean(walletAddress);
 
   if (!isLoggedIn) {
     return <MainMenu onLogin={handleLogin} isLoading={authLoading} />;
