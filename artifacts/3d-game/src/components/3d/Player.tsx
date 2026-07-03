@@ -42,6 +42,27 @@ const MIN_PITCH = 0.15;
 const MAX_PITCH = 1.45;
 const MOUSE_SENSITIVITY = 0.0028;
 const ZOOM_SENSITIVITY = 0.0015;
+// How fast the actual camera yaw/pitch/distance chase the mouse-driven
+// target values every frame. Higher = snappier, lower = smoother/laggier.
+const CAM_SMOOTH_RATE = 8;
+
+// ─── Keybind → action logging ───────────────────────────────────────────
+// Purely diagnostic: logs every mapped key the player presses, along with
+// the in-game action it triggers, so behavior is easy to verify from the
+// browser console during playtesting.
+const KEYBIND_ACTIONS: Record<string, string> = {
+  KeyW: "Move forward",
+  ArrowUp: "Move forward",
+  KeyS: "Move backward",
+  ArrowDown: "Move backward",
+  KeyA: "Strafe left",
+  ArrowLeft: "Strafe left",
+  KeyD: "Strafe right",
+  ArrowRight: "Strafe right",
+  ShiftLeft: "Sprint (run speed)",
+  ShiftRight: "Sprint (run speed)",
+  KeyQ: "Toggle weapon (equip/holster gun)",
+};
 
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
 
@@ -73,6 +94,12 @@ function PlayerModel() {
   const yaw = useRef(Math.PI);
   const pitch = useRef(0.55);
   const distance = useRef(CAM_DISTANCE_DEFAULT);
+  // Mouse drag/wheel write to these "target" values; the actual yaw/pitch/
+  // distance above chase them every frame in useFrame (see CAM_SMOOTH_RATE)
+  // so orbiting/zooming feels smoothed instead of snapping instantly.
+  const targetYaw = useRef(Math.PI);
+  const targetPitch = useRef(0.55);
+  const targetDistance = useRef(CAM_DISTANCE_DEFAULT);
   const isDragging = useRef(false);
   const lastMouse = useRef({ x: 0, y: 0 });
   const camInitialized = useRef(false);
@@ -172,15 +199,15 @@ function PlayerModel() {
       const dy = e.clientY - lastMouse.current.y;
       lastMouse.current = { x: e.clientX, y: e.clientY };
 
-      yaw.current -= dx * MOUSE_SENSITIVITY;
-      pitch.current -= dy * MOUSE_SENSITIVITY;
-      pitch.current = Math.max(MIN_PITCH, Math.min(MAX_PITCH, pitch.current));
+      targetYaw.current -= dx * MOUSE_SENSITIVITY;
+      targetPitch.current -= dy * MOUSE_SENSITIVITY;
+      targetPitch.current = Math.max(MIN_PITCH, Math.min(MAX_PITCH, targetPitch.current));
     };
     const onWheel = (e: WheelEvent) => {
-      distance.current += e.deltaY * ZOOM_SENSITIVITY;
-      distance.current = Math.max(
+      targetDistance.current += e.deltaY * ZOOM_SENSITIVITY;
+      targetDistance.current = Math.max(
         CAM_MIN_DISTANCE,
-        Math.min(CAM_MAX_DISTANCE, distance.current),
+        Math.min(CAM_MAX_DISTANCE, targetDistance.current),
       );
     };
 
@@ -199,9 +226,41 @@ function PlayerModel() {
     };
   }, [gl]);
 
+  // Log every mapped keybind press to the console along with the action it
+  // triggers. `e.repeat` is filtered out so holding a key doesn't spam the
+  // console — only the initial keydown transition is logged.
+  useEffect(() => {
+    const pressedKeys = new Set<string>();
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      const action = KEYBIND_ACTIONS[e.code];
+      if (!action || e.repeat || pressedKeys.has(e.code)) return;
+      pressedKeys.add(e.code);
+      // eslint-disable-next-line no-console
+      console.log(`[Input] Key down: "${e.code}" -> ${action}`);
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      pressedKeys.delete(e.code);
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+    };
+  }, []);
+
   useFrame((_state, delta) => {
     const g = group.current;
     if (!g) return;
+
+    // Chase the mouse/wheel-driven target values instead of snapping to
+    // them instantly — smooths out orbit/zoom input.
+    const camLerp = 1 - Math.exp(-CAM_SMOOTH_RATE * delta);
+    yaw.current += (targetYaw.current - yaw.current) * camLerp;
+    pitch.current += (targetPitch.current - pitch.current) * camLerp;
+    distance.current += (targetDistance.current - distance.current) * camLerp;
 
     _camForward.set(Math.sin(yaw.current), 0, Math.cos(yaw.current)).normalize();
     _camRight.crossVectors(_camForward, WORLD_UP).normalize();

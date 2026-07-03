@@ -3,6 +3,7 @@ import { Canvas } from "@react-three/fiber";
 import { Grid, Environment, Sky, Stats, KeyboardControls } from "@react-three/drei";
 import Floor from "./Floor";
 import { WorldModel } from "./WorldModel";
+import Lighting from "./Lighting";
 import Player, { PLAYER_SPAWN, playerKeyboardMap } from "../3d/Player";
 import GameHUD from "../hud/GameHUD";
 
@@ -76,52 +77,7 @@ export default function Scene({ showStats = false }: SceneProps) {
         {showStats && <Stats />}
 
         {/* ── Lighting ──────────────────────────────────────────────────── */}
-        {/* Soft fill for the anime character skin */}
-        <ambientLight intensity={0.55} color="#d4c8ff" />
-
-        {/* Key light — warm from front-left. Shadow frustum is centered on
-            PLAYER_SPAWN (not the world origin) and widened since the
-            character now lives ~50 units out into the scaled-up forest. */}
-        <directionalLight
-          position={[PLAYER_SPAWN[0] + 6, 12, PLAYER_SPAWN[2] + 8]}
-          intensity={1.6}
-          castShadow
-          shadow-mapSize={[2048, 2048]}
-          shadow-camera-near={0.5}
-          shadow-camera-far={80}
-          shadow-camera-left={-25}
-          shadow-camera-right={25}
-          shadow-camera-top={25}
-          shadow-camera-bottom={-25}
-          target-position={PLAYER_SPAWN}
-          color="#fff5e0"
-        />
-
-        {/* Rim light — cool from behind to separate character from bg */}
-        <directionalLight
-          position={[PLAYER_SPAWN[0] - 4, 6, PLAYER_SPAWN[2] - 8]}
-          intensity={0.6}
-          color="#8ecfff"
-        />
-
-        {/* Purple fill from below for anime dungeon vibe */}
-        <pointLight position={[PLAYER_SPAWN[0], 0.3, PLAYER_SPAWN[2]]} intensity={0.4} color="#7c3aed" distance={8} />
-
-        {/* Shadow-casting sun light — also re-centered on the spawn area
-            since the forest is now ~250 units across. */}
-        <directionalLight
-          castShadow
-          position={[PLAYER_SPAWN[0] + 15, 25, PLAYER_SPAWN[2] + 10]}
-          intensity={1.4}
-          shadow-mapSize={[2048, 2048]}
-          shadow-camera-left={-60}
-          shadow-camera-right={60}
-          shadow-camera-top={60}
-          shadow-camera-bottom={-60}
-          shadow-camera-near={0.5}
-          shadow-camera-far={150}
-          target-position={PLAYER_SPAWN}
-        />
+        <Lighting />
 
         {/* ── Environment & ground ──────────────────────────────────────── */}
         <Sky sunPosition={[15, 25, 10]} turbidity={6} rayleigh={1.2} />
@@ -150,6 +106,18 @@ export default function Scene({ showStats = false }: SceneProps) {
           <WorldModel url="/models/trees_optimized.glb" targetSize={30} position={[8, 0.1, -10]} />
           */}
         </Suspense>
+
+        {/* TEMP DEBUG: transparent ground-alignment plane at y=-0.01.
+            Since the forest's own walkable surface should already sit at
+            y=0, this plane should read as *just barely* peeking through
+            below her feet — if she looks like she's floating well above
+            it or sunk well below it, that's a quick visual signal
+            something regressed. Safe to delete once alignment is confirmed
+            visually in a real browser. */}
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]} receiveShadow>
+          <planeGeometry args={[100, 100]} />
+          <meshStandardMaterial color="#4a7c59" transparent opacity={0.3} />
+        </mesh>
 
         <Floor />
 
