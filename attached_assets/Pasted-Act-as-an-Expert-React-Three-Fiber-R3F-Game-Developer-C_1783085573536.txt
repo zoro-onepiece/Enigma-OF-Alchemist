@@ -1,0 +1,44 @@
+Act as an Expert React Three Fiber (R3F) Game Developer.
+
+Context: > I have my final animated character model final_player3.glb and a separate weapon model gun.glb in my public folder. final_player3.glb contains the mesh, armature, and 6 key animations: 'idle', 'walk', 'run', 'melee', 'gun', 'gun-fire'.
+
+Goal:
+Build a robust 3rd-Person Character Controller using @react-three/fiber and @react-three/drei.
+
+Requirements for Player.tsx:
+
+    Load Models: Use useGLTF to load both /final_player3.glb and /gun.glb. Apply the animations from the player model using the useAnimations hook.
+
+    State Management: Track weapon mode using a state or ref (isGunEquipped - boolean).
+
+    Input Handling (KeyboardControls):
+
+        W, A, S, D or Arrows -> Movement.
+
+        Shift -> Sprint/Run.
+
+        Q key -> Toggle isGunEquipped state (Equip Gun vs Melee mode).
+
+        Left Mouse Click -> Attack.
+
+    Weapon Attachment (Crucial): Traverse the final_player3.glb nodes to find the right-hand bone (likely named mixamorigRightHand or RightHand). Use createPortal from R3F to render the gun.glb mesh directly inside this bone so it follows the hand animations. Only render/show the gun if isGunEquipped is true.
+
+    Animation Blending Logic (Inside useFrame):
+
+        Default: Play 'idle'.
+
+        If moving: Crossfade to 'walk'.
+
+        If moving + Shift: Crossfade to 'run'.
+
+        If attacking (Click) + !isGunEquipped: Play 'melee' animation once, then return to base animation.
+
+        If attacking (Click) + isGunEquipped: Play 'gun-fire' animation once, then return to base animation.
+
+        If isGunEquipped is true but not moving/attacking: Play 'gun' (idle with gun pose).
+
+        Note: Use .crossFadeTo() for smooth transitions.
+
+    Movement & Rotation: Calculate movement vectors based on WASD. Update position and smoothly rotate the character to face the direction of movement using MathUtils.lerp or Quaternions.
+
+Please write the complete Player.tsx code. Assume I will wrap my <Canvas> with <KeyboardControls> in App.jsx, so please provide the Keyboard map configuration array as well.

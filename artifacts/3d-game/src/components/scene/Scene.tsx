@@ -1,10 +1,15 @@
 import { Suspense, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Grid, Environment, Sky, Stats } from "@react-three/drei";
+import { Grid, Environment, Sky, Stats, KeyboardControls } from "@react-three/drei";
 import * as THREE from "three";
 import Floor from "./Floor";
 import { WorldModel } from "./WorldModel";
-import Player, { PLAYER_SPAWN, PLAYER_WORLD_POS, PLAYER_WORLD_ROT } from "../3d/Player";
+import Player, {
+  PLAYER_SPAWN,
+  PLAYER_WORLD_POS,
+  PLAYER_WORLD_ROT,
+  playerKeyboardMap,
+} from "../3d/Player";
 import GameHUD from "../hud/GameHUD";
 
 // ─── WebGL capability check ───────────────────────────────────────────────────
@@ -101,6 +106,7 @@ export default function Scene({ showStats = false }: SceneProps) {
 
   return (
     <div className="w-full h-full relative">
+      <KeyboardControls map={playerKeyboardMap}>
       <Canvas
         shadows
         dpr={[1, 1.5]}
@@ -209,6 +215,7 @@ export default function Scene({ showStats = false }: SceneProps) {
         {/* ── Player ────────────────────────────────────────────────────── */}
         <Player />
       </Canvas>
+      </KeyboardControls>
 
       {/* ── Alchemist HUD overlay ────────────────────────────────────────── */}
       <GameHUD

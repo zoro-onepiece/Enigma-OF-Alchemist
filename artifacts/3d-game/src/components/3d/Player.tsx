@@ -1,5 +1,5 @@
-import { Suspense, useRef, useEffect, useState } from "react";
-import { useGLTF, useAnimations } from "@react-three/drei";
+import { Suspense, useRef, useEffect, useState, useMemo } from "react";
+import { useGLTF, useAnimations, useKeyboardControls } from "@react-three/drei";
 import { useFrame, createPortal } from "@react-three/fiber";
 import * as THREE from "three";
 
@@ -13,36 +13,116 @@ export const PLAYER_SPAWN: [number, number, number] = [13.56, 0, 48.85];
 export const PLAYER_WORLD_POS = new THREE.Vector3(...PLAYER_SPAWN);
 export const PLAYER_WORLD_ROT = { y: 0 };
 
-useGLTF.preload("/anime_girl.glb");
-useGLTF.preload("/animations.glb");
+// ─── Keyboard control map ──────────────────────────────────────────────────
+// Consumed by <KeyboardControls map={playerKeyboardMap}> wrapping the
+// <Canvas> in Scene.tsx.
+export enum PlayerControl {
+  forward = "forward",
+  backward = "backward",
+  left = "left",
+  right = "right",
+  sprint = "sprint",
+  toggleWeapon = "toggleWeapon",
+}
 
-const MOVE_SPEED = 4;
-const TURN_SPEED = 2.8;
+export const playerKeyboardMap = [
+  { name: PlayerControl.forward, keys: ["KeyW", "ArrowUp"] },
+  { name: PlayerControl.backward, keys: ["KeyS", "ArrowDown"] },
+  { name: PlayerControl.left, keys: ["KeyA", "ArrowLeft"] },
+  { name: PlayerControl.right, keys: ["KeyD", "ArrowRight"] },
+  { name: PlayerControl.sprint, keys: ["ShiftLeft", "ShiftRight"] },
+  { name: PlayerControl.toggleWeapon, keys: ["KeyQ"] },
+];
 
-const pressedKeys = new Set<string>();
+useGLTF.preload("/final_player3.glb");
+useGLTF.preload("/gun.glb");
+
+const WALK_SPEED = 2.2;
+const RUN_SPEED = 4.5;
+const TURN_LERP = 10; // higher = snappier facing rotation
 
 function PlayerModel() {
   const group = useRef<THREE.Group>(null);
 
-  // Colored (skinned) model — this is what gets rendered
-  const { scene } = useGLTF("/anime_girl.glb");
+  // Final animated character: mesh + armature + 6 clips
+  // ('idle', 'walk', 'run', 'melee', 'gun', 'gun-fire').
+  const { scene, animations } = useGLTF("/final_player3.glb");
+  const { actions, mixer } = useAnimations(animations, group);
 
-  // Grey model — only its animation clips are used
-  const { animations } = useGLTF("/animations.glb");
-
-  // Retarget: apply animations.glb clips onto anime_girl.glb's skeleton (group ref)
-  const { actions } = useAnimations(animations, group);
+  // Separate weapon model, portaled into the right-hand bone.
+  const { scene: gunSceneSrc } = useGLTF("/gun.glb");
+  const gunScene = useMemo(() => gunSceneSrc.clone(), [gunSceneSrc]);
 
   const [rightHand, setRightHand] = useState<THREE.Bone | null>(null);
+  const [isGunEquipped, setIsGunEquipped] = useState(false);
 
-  // Play "Idle" by default once actions are ready
+  const activeAction = useRef<THREE.AnimationAction | null>(null);
+  const isAttacking = useRef(false);
+
+  const [subscribeKeys, getKeys] = useKeyboardControls<PlayerControl>();
+
+  // ── Crossfade helper ───────────────────────────────────────────────────
+  const crossFadeTo = (name: string, duration = 0.25, once = false) => {
+    const next = actions[name];
+    if (!next || next === activeAction.current) return;
+
+    next.reset();
+    if (once) {
+      next.setLoop(THREE.LoopOnce, 1);
+      next.clampWhenFinished = true;
+    } else {
+      next.setLoop(THREE.LoopRepeat, Infinity);
+    }
+    next.enabled = true;
+    next.play();
+
+    if (activeAction.current) {
+      activeAction.current.crossFadeTo(next, duration, true);
+    } else {
+      next.fadeIn(duration);
+    }
+    activeAction.current = next;
+  };
+
+  // Default idle once actions are ready
   useEffect(() => {
-    const idle = actions["Idle"];
-    idle?.reset().fadeIn(0.3).play();
-    return () => {
-      idle?.fadeOut(0.3);
-    };
+    crossFadeTo("idle", 0.3);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [actions]);
+
+  // Q toggles weapon mode — edge-triggered so holding the key doesn't
+  // rapid-toggle every frame.
+  useEffect(() => {
+    return subscribeKeys(
+      (state) => state.toggleWeapon,
+      (pressed) => {
+        if (pressed) setIsGunEquipped((v) => !v);
+      },
+    );
+  }, [subscribeKeys]);
+
+  // Left mouse click → attack (melee or gun-fire depending on isGunEquipped)
+  useEffect(() => {
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button !== 0) return;
+      if (isAttacking.current) return;
+      isAttacking.current = true;
+    };
+    window.addEventListener("mousedown", onMouseDown);
+    return () => window.removeEventListener("mousedown", onMouseDown);
+  }, []);
+
+  // When a one-shot attack clip finishes, drop back to the base animation.
+  useEffect(() => {
+    if (!mixer) return;
+    const onFinished = (e: { action: THREE.AnimationAction }) => {
+      if (e.action === actions["melee"] || e.action === actions["gun-fire"]) {
+        isAttacking.current = false;
+      }
+    };
+    mixer.addEventListener("finished", onFinished);
+    return () => mixer.removeEventListener("finished", onFinished);
+  }, [mixer, actions]);
 
   // One-time traversal: enable shadows + locate the right-hand bone
   useEffect(() => {
@@ -62,42 +142,41 @@ function PlayerModel() {
     setRightHand(hand);
   }, [scene]);
 
-  useEffect(() => {
-    const onDown = (e: KeyboardEvent) => {
-      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
-        e.preventDefault();
-      }
-      pressedKeys.add(e.code);
-    };
-    const onUp = (e: KeyboardEvent) => pressedKeys.delete(e.code);
-    window.addEventListener("keydown", onDown);
-    window.addEventListener("keyup", onUp);
-    return () => {
-      window.removeEventListener("keydown", onDown);
-      window.removeEventListener("keyup", onUp);
-    };
-  }, []);
-
   useFrame((_state, delta) => {
     const g = group.current;
     if (!g) return;
 
-    const forward  = pressedKeys.has("KeyW") || pressedKeys.has("ArrowUp");
-    const backward = pressedKeys.has("KeyS") || pressedKeys.has("ArrowDown");
-    const left     = pressedKeys.has("KeyA") || pressedKeys.has("ArrowLeft");
-    const right    = pressedKeys.has("KeyD") || pressedKeys.has("ArrowRight");
+    const { forward, backward, left, right, sprint } = getKeys();
+    const moving = forward || backward || left || right;
+    const speed = sprint ? RUN_SPEED : WALK_SPEED;
 
-    if (left)  g.rotation.y += TURN_SPEED * delta;
-    if (right) g.rotation.y -= TURN_SPEED * delta;
+    if (moving) {
+      // World-space movement vector from WASD (x: strafe, z: forward/back).
+      const moveX = (left ? 1 : 0) - (right ? 1 : 0);
+      const moveZ = (backward ? 1 : 0) - (forward ? 1 : 0);
+      const len = Math.hypot(moveX, moveZ) || 1;
+      const dirX = moveX / len;
+      const dirZ = moveZ / len;
 
-    const ry = g.rotation.y;
-    if (forward) {
-      g.position.x -= Math.sin(ry) * MOVE_SPEED * delta;
-      g.position.z -= Math.cos(ry) * MOVE_SPEED * delta;
+      g.position.x += dirX * speed * delta;
+      g.position.z += dirZ * speed * delta;
+
+      // Smoothly rotate the character to face the movement direction.
+      const targetAngle = Math.atan2(dirX, dirZ);
+      let diff = targetAngle - g.rotation.y;
+      diff = Math.atan2(Math.sin(diff), Math.cos(diff)); // shortest angular path
+      g.rotation.y += diff * Math.min(1, TURN_LERP * delta);
     }
-    if (backward) {
-      g.position.x += Math.sin(ry) * MOVE_SPEED * delta;
-      g.position.z += Math.cos(ry) * MOVE_SPEED * delta;
+
+    // ── Animation blending ────────────────────────────────────────────
+    if (isAttacking.current) {
+      crossFadeTo(isGunEquipped ? "gun-fire" : "melee", 0.15, true);
+    } else if (moving) {
+      crossFadeTo(sprint ? "run" : "walk", 0.25);
+    } else if (isGunEquipped) {
+      crossFadeTo("gun", 0.25);
+    } else {
+      crossFadeTo("idle", 0.3);
     }
 
     PLAYER_WORLD_POS.copy(g.position);
@@ -108,16 +187,12 @@ function PlayerModel() {
     <group ref={group} position={PLAYER_SPAWN} dispose={null}>
       <primitive object={scene} />
 
-      {/* Weapon attachment: portal a mesh directly into the bone's local space
-          so it inherits the bone's animated position/rotation every frame. */}
+      {/* Weapon attachment: portal the gun mesh directly into the bone's
+          local space so it inherits the bone's animated position/rotation
+          every frame. Only shown while isGunEquipped is true. */}
       {rightHand &&
-        createPortal(
-          <mesh position={[0, 0.12, 0]} rotation={[Math.PI / 2, 0, 0]}>
-            <boxGeometry args={[0.04, 0.04, 0.35]} />
-            <meshStandardMaterial color="#c0c0c0" metalness={0.8} roughness={0.2} />
-          </mesh>,
-          rightHand,
-        )}
+        isGunEquipped &&
+        createPortal(<primitive object={gunScene} />, rightHand)}
     </group>
   );
 }
