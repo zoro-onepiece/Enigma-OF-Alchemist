@@ -46,19 +46,32 @@ function WebGLFallback() {
 // ─── Scene ────────────────────────────────────────────────────────────────────
 interface SceneProps {
   showStats?: boolean;
+  // Optional pass-through so a parent App can drive the HUD's wallet
+  // button with real auth state (Google login / dev bypass). When not
+  // provided, Scene falls back to its own local placeholder state so it
+  // still works standalone.
+  walletAddress?: string | null;
+  onConnectWallet?: () => void;
 }
 
-export default function Scene({ showStats = false }: SceneProps) {
+export default function Scene({
+  showStats = false,
+  walletAddress: walletAddressProp,
+  onConnectWallet: onConnectWalletProp,
+}: SceneProps) {
   const [health] = useState(72);
   const [score] = useState(340);
   const [essences] = useState(3);
-  const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const [internalWalletAddress, setInternalWalletAddress] = useState<string | null>(null);
 
   const handleConnectWallet = () => {
     // Placeholder — Magic Labs + Openfort wiring happens here for Arbitrum Sepolia.
     console.log("TODO: connect wallet (Arbitrum Sepolia)");
-    setWalletAddress("0x1234abcd5678ef901234abcd5678ef901234abcd");
+    setInternalWalletAddress("0x1234abcd5678ef901234abcd5678ef901234abcd");
   };
+
+  const walletAddress = walletAddressProp !== undefined ? walletAddressProp : internalWalletAddress;
+  const onConnectWallet = onConnectWalletProp ?? handleConnectWallet;
 
   if (!isWebGLAvailable()) {
     return <WebGLFallback />;
@@ -143,7 +156,7 @@ export default function Scene({ showStats = false }: SceneProps) {
         score={score}
         essences={essences}
         walletAddress={walletAddress as never}
-        onConnectWallet={handleConnectWallet}
+        onConnectWallet={onConnectWallet}
       />
 
       {/* ── Controls hint overlay ─────────────────────────────────────────── */}
