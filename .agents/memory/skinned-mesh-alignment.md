@@ -22,3 +22,11 @@ or ground-contact offsets. Instead:
    while the visual mesh gets shifted into alignment.
 
 Static, non-skinned meshes (terrain, buildings) are fine with Box3 — this only matters for skinned/animated meshes.
+
+**Gotcha — name matching must require `isBone`:** matching bones by a loose name pattern like `/hips$/i` across
+`scene.traverse()` without checking `(child as THREE.Bone).isBone` is fragile: some GLB exports (esp. re-exports
+through Blender/Mixamo pipelines) contain a duplicate non-bone node with a similar name (e.g. a control/IK empty)
+positioned near local origin, separate from the real skinned armature joint. Overwriting "last match wins" during
+traversal can silently pick the wrong node, especially across re-exported versions of the "same" file — always
+require `isBone` (or otherwise confirm it belongs to the actual `SkinnedMesh.skeleton.bones` list) before trusting a
+bone's world position for alignment math.

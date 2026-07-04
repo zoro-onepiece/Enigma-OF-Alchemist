@@ -85,39 +85,31 @@ export default function Scene({ showStats = false }: SceneProps) {
 
         <Suspense fallback={null}>
           {/*
-            Forest is the walkable world (not a diorama). targetSize=250
+            Forest/island is the walkable world (not a diorama). targetSize=250
             makes the model's widest axis span 250 world units, so trees
             read as 3-5x the character's height.
 
             The character spawns at the world origin [0,0,0] and never
             raycasts against the ground — she just always stands at y=0.
-            WorldModel's alignBottom option (on by default) already does
-            the vertical alignment for us: it measures the raw GLB's own
-            bounding box and computes an internal offset so the model's
-            lowest point lands exactly at this `position.y`. Confirmed via
-            console log — raw box min.y=-0.176 — so position.y=0 puts the
-            walkable surface exactly at the character's feet. The earlier
-            -2 / -25 values were fighting against that built-in alignment
-            instead of trusting it.
+            WorldModel's alignBottom option (on by default) measures the raw
+            GLB's own bounding box and offsets it internally so its lowest
+            point lands at this group's local y=0 — but that offset is
+            applied *inside* WorldModel's own group, so the `position` prop
+            below still shifts the whole aligned model up/down as a group.
+            In-browser testing showed the model still rendering high above
+            the player despite that internal alignment, so this Y offset is
+            the external correction on top of it. -20 is a starting point
+            per direct visual testing — nudge it up/down (e.g. -15, -25)
+            until the player's feet sit exactly on the visible surface.
+            WorldModel already sets `receiveShadow = true` on every mesh it
+            traverses, so shadows are on by default.
           */}
-          <WorldModel url="/models/low_poly_forest.glb" targetSize={250} position={[0, 0, 0]} />
+          <WorldModel url="/models/low_poly_forest.glb" targetSize={250} position={[0, -20, 0]} />
 
           {/* Extra trees — enable once positioned/tested:
           <WorldModel url="/models/trees_optimized.glb" targetSize={30} position={[8, 0.1, -10]} />
           */}
         </Suspense>
-
-        {/* TEMP DEBUG: transparent ground-alignment plane at y=-0.01.
-            Since the forest's own walkable surface should already sit at
-            y=0, this plane should read as *just barely* peeking through
-            below her feet — if she looks like she's floating well above
-            it or sunk well below it, that's a quick visual signal
-            something regressed. Safe to delete once alignment is confirmed
-            visually in a real browser. */}
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]} receiveShadow>
-          <planeGeometry args={[100, 100]} />
-          <meshStandardMaterial color="#4a7c59" transparent opacity={0.3} />
-        </mesh>
 
         <Floor />
 
