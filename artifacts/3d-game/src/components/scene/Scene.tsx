@@ -1,10 +1,9 @@
-import { Suspense, useState } from "react";
+import { useState } from "react";
 import { Canvas } from "@react-three/fiber";
-import { Grid, Environment, Sky, Stats, KeyboardControls } from "@react-three/drei";
-import Floor from "./Floor";
-import { WorldModel } from "./WorldModel";
+import { Environment, Sky, Stats, KeyboardControls } from "@react-three/drei";
 import Lighting from "./Lighting";
-import Player, { PLAYER_SPAWN, playerKeyboardMap } from "../3d/Player";
+import GameEnvironment from "./environment/GameEnvironment";
+import Player, { playerKeyboardMap } from "../3d/Player";
 import GameHUD from "../hud/GameHUD";
 
 // ─── WebGL capability check ───────────────────────────────────────────────────
@@ -21,9 +20,12 @@ function isWebGLAvailable(): boolean {
 }
 
 // Note: the Fortnite-style camera (OrbitControls + follow + target-locking)
-// now lives entirely inside Player.tsx, since it needs the player's group
-// ref and movement math every frame. Nothing camera-related is declared
-// here anymore.
+// lives entirely inside Player.tsx, since it needs the player's group ref
+// and movement math every frame. Nothing camera-related is declared here.
+// Player.tsx is intentionally left untouched by this environment rewrite —
+// it already assumes the walkable surface sits at y=0, which the temple
+// garden's ground/pathway/platform all satisfy by construction (see
+// GameEnvironment.tsx).
 
 // ─── WebGL unavailable fallback ───────────────────────────────────────────────
 function WebGLFallback() {
@@ -92,57 +94,15 @@ export default function Scene({
         {/* ── Lighting ──────────────────────────────────────────────────── */}
         <Lighting />
 
-        {/* ── Environment & ground ──────────────────────────────────────── */}
+        {/* ── Sky / ambience ────────────────────────────────────────────── */}
         <Sky sunPosition={[15, 25, 10]} turbidity={6} rayleigh={1.2} />
         <Environment preset="night" />
 
-        <Suspense fallback={null}>
-          {/*
-            Forest/island is the walkable world (not a diorama). targetSize=250
-            makes the model's widest axis span 250 world units, so trees
-            read as 3-5x the character's height.
-
-            The character spawns at the world origin [0,0,0] and never
-            raycasts against the ground — she just always stands at y=0.
-            low_poly_forest.glb is an island: grass on top, a "slope" mesh
-            forming the cliffs, and a separate "water" mesh below/around it.
-            The old alignBottom logic aligned the GLB's global bounding-box
-            minimum (the base of the cliff/slope mesh) to y=0, which left the
-            actual grass surface dozens of units above the player — no fixed
-            position offset here could fix that, since the mismatch scales
-            with targetSize. WorldModel now raycasts straight down through
-            the terrain meshes (matched by name: ground/slope) at the exact
-            X/Z column that lands at this group's local (0,0) — i.e. where
-            the player spawns — and aligns THAT surface height to y=0
-            instead of the global bounding-box minimum. So no external Y
-            offset should be needed here; position stays at the origin.
-            WorldModel already sets `receiveShadow = true` on every mesh it
-            traverses, so shadows are on by default.
-          */}
-          <WorldModel url="/models/low_poly_forest.glb" targetSize={250} position={[0, 0, 0]} />
-
-          {/* Extra trees — enable once positioned/tested:
-          <WorldModel url="/models/trees_optimized.glb" targetSize={30} position={[8, 0.1, -10]} />
-          */}
-        </Suspense>
-
-        <Floor />
-
-        <Grid
-          visible={false}
-          position={[0, 0.001, 0]}
-          args={[80, 80]}
-          cellSize={1}
-          cellThickness={0.4}
-          cellColor="#3b1f7a"
-          sectionSize={5}
-          sectionThickness={0.9}
-          sectionColor="#6d28d9"
-          fadeDistance={35}
-          fadeStrength={1}
-          followCamera
-          infiniteGrid
-        />
+        {/* ── Code-generated Japanese temple garden environment ────────────
+            Ground, pathway, temple, trees, and puzzle props — see
+            GameEnvironment.tsx and its environment/ subcomponents. No GLB
+            models are loaded here. */}
+        <GameEnvironment />
 
         {/* ── Player ────────────────────────────────────────────────────── */}
         <Player />

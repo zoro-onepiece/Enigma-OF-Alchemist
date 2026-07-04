@@ -1,0 +1,93 @@
+Replace the current environment (currently loaded from /models/low_poly_forest.glb
+via WorldModel in Scene.tsx) with a fully CODE-GENERATED 3D environment — no new
+GLB files, everything built with React Three Fiber primitives, drei helpers, and
+shader materials. Theme: a semi-realistic Japanese temple garden at dusk.
+
+Create these new files under src/components/scene/environment/:
+
+1. CherryBlossomTree.tsx
+   - Trunk: a slightly bent, tapered cylinder (use a bezier-curve-like stack of
+     2-3 cylinders with decreasing radius) with brown/dark bark material
+     (roughness 0.9, color ~#4a3728).
+   - Canopy: 4-6 overlapping low-poly spheres (icosahedron geometry, detail 1)
+     clustered around the top, material color #ffb7c5 (soft pink), roughness 0.6.
+   - Add a drei <Sparkles> instance around the canopy (count ~15, scale 3,
+     color "#ffe4ec", speed 0.2) to simulate falling petals.
+   - Export a component that accepts position/rotation/scale props so many can
+     be scattered via an array + map in the parent scene.
+
+2. QuantumTree.tsx
+   - A stylized "glowing sci-fi tree": trunk is a thin dark emissive-edged
+     cylinder, branches are thin tapered cylinders arranged radially upward.
+   - Canopy replaced with a glowing wireframe icosahedron (MeshBasicMaterial,
+     wireframe, color cyan/purple e.g. "#7c3aed" or "#22d3ee") layered inside
+     a solid low-opacity icosahedron (transparent, opacity 0.25) for a glow-core
+     look. Add a THREE.PointLight inside the canopy (color matching, intensity
+     ~1.5, distance ~6) so it actually lights the ground beneath it.
+   - Optionally animate a slow rotation on the wireframe layer via useFrame.
+
+3. Pathway.tsx
+   - A winding stone path made of individual flat cylinder "stepping stones"
+     (low segment count for low-poly look, color #8a8a8a, roughness 0.8)
+     placed along a curve. Accept an array of [x,z] waypoints as a prop and
+     generate stones by interpolating along the path (use THREE.CatmullRomCurve3
+     with getPoints).
+
+4. GlowingPuzzle.tsx
+   - A floating rune/glyph puzzle object: a flat cylinder or octagon base
+     (MeshStandardMaterial, dark stone color) with a glowing emissive
+     symbol on top — simplest approach: an emissive plane/ring
+     (RingGeometry) hovering just above the base, color configurable via
+     prop (default "#a78bfa"), with a soft bobbing animation (sin wave on
+     position.y) and slow rotation via useFrame. Add a THREE.PointLight
+     matching the emissive color, intensity ~1, distance ~4. Accept an
+     `isSolved` boolean prop — when true, switch emissive color to a
+     "solved" gold/green tone and stop bobbing.
+
+5. JapaneseTemple.tsx
+   - A stylized low-poly temple built entirely from primitives (no external
+     model): a raised rectangular stone platform (BoxGeometry) as the base,
+     4-6 red/vermilion cylindrical pillars (color "#b8302e"), a dark wood
+     floor plane on top, and a pagoda-style roof made from 2 stacked, tapered
+     box or cone shapes with slightly flared silhouette (use scale/rotation
+     tricks with BoxGeometry or a low-poly ConeGeometry with 4 radial segments
+     rotated 45°) in dark charcoal/black (#1c1c1c) with red trim edges.
+   - Add 2 small emissive paper-lantern spheres (warm orange, "#ff9d4d")
+     hanging near the entrance via point lights.
+
+6. GameEnvironment.tsx — the composition root
+   - Ground: a large low-poly terrain plane (PlaneGeometry with enough
+     segments to add gentle noise-based height variation via a vertex
+     shader or simple per-vertex randomization in a useMemo, subtle only)
+     in a mossy green (#3f5d3f).
+   - Place one JapaneseTemple at the far end of a Pathway.
+   - Scatter ~12-18 CherryBlossomTree and ~4-6 QuantumTree instances around
+     the sides using a seeded pseudo-random layout (avoid overlapping the
+     pathway or temple footprint).
+   - Place 3-5 GlowingPuzzle instances at fixed points near the path,
+     evenly spaced, matching this game's existing puzzle-interaction system
+     if one already exists in PuzzleObject.tsx (check that file first and
+     reuse its click/interact logic instead of duplicating it).
+   - Add gentle ambient fog (via <fog> or scene.fog) in a dusky purple-blue
+     (#2a1f3d) for atmosphere, and increase ambient light slightly to keep
+     the scene readable.
+
+Then in Scene.tsx:
+   - Remove the <WorldModel url="/models/low_poly_forest.glb" .../> line and
+     its Suspense wrapper if now unused.
+   - Import and render <GameEnvironment /> in its place.
+   - Do NOT touch the Player, camera, lighting rig (directional/point lights),
+     Sky, or HUD — those stay exactly as they are.
+   - Make sure the temple platform and pathway sit at y=0 so they match the
+     player's existing ground level (y=0) with no offset hacks needed this
+     time, since everything is authored in code at the correct scale.
+
+Performance notes:
+   - Reuse geometries/materials via useMemo where the same tree type repeats,
+     don't create new geometry instances per tree in the render loop.
+   - Keep total tree count in the 20-25 range for now (mobile-friendly);
+     it can be increased later once performance is confirmed on your test
+     device.
+
+After implementing: run typecheck, restart the workflow, and take a
+screenshot of the scene before confirming it's done.
