@@ -35,34 +35,37 @@ export default function CherryBlossomTree({
   rotation = [0, 0, 0],
   scale = 1,
 }: CherryBlossomTreeProps) {
-  // Slight per-instance bend so the trunk stack isn't perfectly straight —
-  // derived from position so it's stable across re-renders without state.
-  const bend = useMemo(() => {
+  // Per-instance canopy jitter only — the trunk itself stays perfectly
+  // vertical (no x-offset/z-rotation on the trunk segments); only the
+  // canopy cluster shifts slightly so trees don't look identical.
+  const canopyJitter = useMemo(() => {
     const seed = Math.abs(Math.sin(position[0] * 12.9898 + position[2] * 78.233));
-    return (seed - 0.5) * 0.5;
+    return (seed - 0.5) * 0.3;
   }, [position]);
 
   return (
     <group position={position} rotation={rotation} scale={scale}>
-      {/* Trunk — 3 tapered cylinder segments stacked with a slight lean to
-          fake a bezier-curved trunk cheaply. */}
+      {/* Trunk — 3 tapered cylinder segments stacked straight up (all
+          centered on the group's local x/z = 0), so the stem reads as a
+          vertical tree trunk instead of leaning sideways. */}
       <group>
         <mesh position={[0, 0.6, 0]} castShadow receiveShadow>
           <cylinderGeometry args={[0.22, 0.28, 1.2, 6]} />
           <meshStandardMaterial color="#4a3728" roughness={0.9} />
         </mesh>
-        <mesh position={[bend * 0.3, 1.55, 0]} rotation={[0, 0, bend * 0.4]} castShadow receiveShadow>
+        <mesh position={[0, 1.75, 0]} castShadow receiveShadow>
           <cylinderGeometry args={[0.15, 0.22, 1.1, 6]} />
           <meshStandardMaterial color="#4a3728" roughness={0.9} />
         </mesh>
-        <mesh position={[bend * 0.7, 2.4, 0]} rotation={[0, 0, bend * 0.7]} castShadow receiveShadow>
+        <mesh position={[0, 2.75, 0]} castShadow receiveShadow>
           <cylinderGeometry args={[0.08, 0.15, 0.9, 6]} />
           <meshStandardMaterial color="#4a3728" roughness={0.9} />
         </mesh>
       </group>
 
-      {/* Canopy — clustered low-poly icosahedron puffs */}
-      <group position={[bend * 0.9, 2.9, 0]}>
+      {/* Canopy — clustered low-poly icosahedron puffs, sitting right on
+          top of the vertical trunk with only a small jitter for variety. */}
+      <group position={[canopyJitter, 3.25, canopyJitter]}>
         {CANOPY_OFFSETS.map((offset, i) => (
           <mesh
             key={i}

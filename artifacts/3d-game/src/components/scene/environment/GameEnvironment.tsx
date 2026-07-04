@@ -2,9 +2,11 @@ import { useMemo } from "react";
 import * as THREE from "three";
 import CherryBlossomTree from "./CherryBlossomTree";
 import QuantumTree from "./QuantumTree";
+import GreenLeafTree from "./GreenLeafTree";
 import Pathway from "./Pathway";
 import GlowingPuzzle from "./GlowingPuzzle";
 import JapaneseTemple from "./JapaneseTemple";
+import JapaneseHouse from "./JapaneseHouse";
 import { useGameStore } from "../../../store/gameStore";
 
 /**
@@ -45,16 +47,20 @@ const PATH_WAYPOINTS: [number, number][] = [
 ];
 
 const TEMPLE_POSITION: [number, number, number] = [0, 0, -36];
+// A separate, fully-walled house (with a working door) off to the side of
+// the main path, distinct from the open-pillar temple at the path's end.
+const HOUSE_POSITION: [number, number, number] = [12, 0, -16];
 
 const GROUND_SIZE = 90;
 const GROUND_SEGMENTS = 48;
 
-// Keep scattered props clear of the pathway (a loose corridor around x=0)
-// and the temple's footprint near z=-36.
+// Keep scattered props clear of the pathway (a loose corridor around x=0),
+// the temple's footprint near z=-36, and the house's footprint near (12,-16).
 function isClearOfPathAndTemple(x: number, z: number) {
   const nearPath = Math.abs(x) < 4.5 && z > -34 && z < 5;
   const nearTemple = Math.hypot(x, z + 36) < 7;
-  return !nearPath && !nearTemple;
+  const nearHouse = Math.abs(x - HOUSE_POSITION[0]) < 5.5 && Math.abs(z - HOUSE_POSITION[2]) < 5;
+  return !nearPath && !nearTemple && !nearHouse;
 }
 
 export default function GameEnvironment() {
@@ -113,6 +119,20 @@ export default function GameEnvironment() {
     return trees;
   }, []);
 
+  const greenLeafTrees = useMemo(() => {
+    const rand = mulberry32(3030);
+    const trees: { position: [number, number, number]; scale: number }[] = [];
+    let attempts = 0;
+    while (trees.length < 12 && attempts < 500) {
+      attempts++;
+      const x = (rand() - 0.5) * (GROUND_SIZE - 10);
+      const z = (rand() - 0.5) * (GROUND_SIZE - 10) - 5;
+      if (!isClearOfPathAndTemple(x, z)) continue;
+      trees.push({ position: [x, 0, z], scale: 0.85 + rand() * 0.4 });
+    }
+    return trees;
+  }, []);
+
   const puzzlePlacements = useMemo(() => {
     // Evenly spaced along the path, just off to the side so they don't
     // block the walkable stones.
@@ -148,6 +168,9 @@ export default function GameEnvironment() {
       {/* Temple at the far end of the path */}
       <JapaneseTemple position={TEMPLE_POSITION} />
 
+      {/* Enterable house — has real walls and a door the player can open */}
+      <JapaneseHouse position={HOUSE_POSITION} />
+
       {/* Cherry blossom grove */}
       {cherryBlossomTrees.map((tree, i) => (
         <CherryBlossomTree key={`cherry-${i}`} position={tree.position} scale={tree.scale} />
@@ -156,6 +179,11 @@ export default function GameEnvironment() {
       {/* Quantum trees */}
       {quantumTrees.map((tree, i) => (
         <QuantumTree key={`quantum-${i}`} position={tree.position} />
+      ))}
+
+      {/* Adorable green-leaf trees */}
+      {greenLeafTrees.map((tree, i) => (
+        <GreenLeafTree key={`green-${i}`} position={tree.position} scale={tree.scale} />
       ))}
 
       {/* Glowing rune puzzles along the path */}

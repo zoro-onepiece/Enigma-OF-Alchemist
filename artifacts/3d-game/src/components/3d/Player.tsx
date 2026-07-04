@@ -2,6 +2,7 @@ import { Suspense, useRef, useEffect, useState, useMemo } from "react";
 import { useGLTF, useAnimations, useKeyboardControls } from "@react-three/drei";
 import { useFrame, useThree, createPortal } from "@react-three/fiber";
 import * as THREE from "three";
+import { resolveMove } from "../../lib/worldCollision";
 
 export const PLAYER_SPAWN: [number, number, number] = [0, 0, 0];
 export const PLAYER_WORLD_POS = new THREE.Vector3(...PLAYER_SPAWN);
@@ -163,7 +164,6 @@ function PlayerModel() {
   const [isGunEquipped, setIsGunEquipped] = useState(false);
 
   const activeAction = useRef<THREE.AnimationAction | null>(null);
-  const isAttacking = useRef(false);
 
   const [subscribeKeys, getKeys] = useKeyboardControls<PlayerControl>();
 
@@ -216,26 +216,15 @@ function PlayerModel() {
     );
   }, [subscribeKeys]);
 
-  useEffect(() => {
-    const onMouseDown = (e: MouseEvent) => {
-      if (e.button !== 0) return;
-      if (isAttacking.current) return;
-      isAttacking.current = true;
-    };
-    window.addEventListener("mousedown", onMouseDown);
-    return () => window.removeEventListener("mousedown", onMouseDown);
-  }, []);
-
-  useEffect(() => {
-    if (!mixer) return;
-    const onFinished = (e: { action: THREE.AnimationAction }) => {
-      if (e.action === actions["melee"] || e.action === actions["gun-fire"]) {
-        isAttacking.current = false;
-      }
-    };
-    mixer.addEventListener("finished", onFinished);
-    return () => mixer.removeEventListener("finished", onFinished);
-  }, [mixer, actions]);
+  // NOTE: mouse clicks intentionally do NOT trigger the melee animation.
+  // Previously, any left-click (window-wide, including HUD/menu buttons and
+  // the click that starts a camera-orbit drag) fired an attack, which read
+  // as a random melee swing whenever the player just wanted to look around
+  // or click a UI button. Only the mapped keyboard controls
+  // (forward/backward/strafe/sprint/toggleWeapon) drive her animation state
+  // now — everything else keeps her idle. `mixer`/`actions` are still used
+  // below for the movement/idle/gun crossfades.
+  void mixer;
 
   useEffect(() => {
     let hand: THREE.Bone | null = null;
@@ -255,8 +244,17 @@ function PlayerModel() {
   }, [scene]);
 
   // Right-click-drag (or left-drag) to orbit camera. Scroll wheel to zoom.
+  // Touch drag orbits the camera too — the fix here is `touch-action: none`
+  // on the canvas plus `preventDefault()` on touch pointer events. Without
+  // those, the browser's default touch handling (page scroll/pinch-zoom)
+  // intercepts single-finger drags before they ever reach `pointermove`, so
+  // mouse-drag orbiting worked but touch-drag orbiting didn't move the
+  // camera at all.
   useEffect(() => {
     const canvas = gl.domElement;
+    // Tell the browser this element owns all touch gestures itself instead
+    // of using them for native scroll/zoom/pull-to-refresh.
+    canvas.style.touchAction = "none";
 
     const onContextMenu = (e: MouseEvent) => e.preventDefault();
 
@@ -264,6 +262,7 @@ function PlayerModel() {
       isDragging.current = true;
       lastMouse.current = { x: e.clientX, y: e.clientY };
       canvas.setPointerCapture(e.pointerId);
+      if (e.pointerType === "touch") e.preventDefault();
     };
     const onPointerUp = (e: PointerEvent) => {
       isDragging.current = false;
@@ -271,6 +270,7 @@ function PlayerModel() {
     };
     const onPointerMove = (e: PointerEvent) => {
       if (!isDragging.current) return;
+      if (e.pointerType === "touch") e.preventDefault();
       const dx = e.clientX - lastMouse.current.x;
       const dy = e.clientY - lastMouse.current.y;
       lastMouse.current = { x: e.clientX, y: e.clientY };
@@ -290,7 +290,9 @@ function PlayerModel() {
     canvas.addEventListener("contextmenu", onContextMenu);
     canvas.addEventListener("pointerdown", onPointerDown);
     window.addEventListener("pointerup", onPointerUp);
-    window.addEventListener("pointermove", onPointerMove);
+    // `passive: false` so preventDefault() on touch pointermove actually
+    // suppresses the native scroll gesture instead of being ignored.
+    window.addEventListener("pointermove", onPointerMove, { passive: false });
     canvas.addEventListener("wheel", onWheel, { passive: true });
 
     return () => {
@@ -365,7 +367,18 @@ function PlayerModel() {
 
     if (moving && _moveDir.lengthSq() > 1e-6) {
       _moveDir.normalize();
-      g.position.addScaledVector(_moveDir, speed * delta);
+      // Resolve against registered wall blockers (e.g. JapaneseHouse) so a
+      // closed door actually stops her instead of letting her walk through
+      // it — each axis is resolved independently so she slides along a
+      // wall instead of freezing when moving diagonally into it.
+      const resolved = resolveMove(
+        g.position.x,
+        g.position.z,
+        _moveDir.x * speed * delta,
+        _moveDir.z * speed * delta,
+      );
+      g.position.x = resolved.x;
+      g.position.z = resolved.z;
 
       const targetAngle = Math.atan2(_moveDir.x, _moveDir.z);
       let diff = targetAngle - g.rotation.y;
@@ -396,9 +409,10 @@ function PlayerModel() {
     }
     camera.lookAt(_target);
 
-    if (isAttacking.current) {
-      crossFadeTo(isGunEquipped ? "gun-fire" : "melee", 0.15, true);
-    } else if (moving) {
+    // Only the mapped movement/weapon-toggle keys drive animation state now
+    // — any other input (mouse clicks, camera drags, HUD buttons) leaves
+    // her idle instead of triggering a melee swing.
+    if (moving) {
       crossFadeTo(sprint ? "run" : "walk", 0.25);
     } else if (isGunEquipped) {
       crossFadeTo("gun", 0.25);
