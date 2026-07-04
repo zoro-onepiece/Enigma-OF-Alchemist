@@ -45,11 +45,55 @@ export function WorldModel({
     const maxDim = Math.max(size.x, size.y, size.z) || 1;
     const s = targetSize / maxDim;
 
-    // Offset so the model is centered on X/Z, and (optionally) its
-    // bottom sits exactly at y=0 of this component.
+    // Figure out where the WALKABLE surface actually is.
+    //
+    // low_poly_forest.glb is not a simple box — it's an island with grass
+    // on top, cliffs (a "slope" mesh) on the sides, and a separate "water"
+    // mesh sitting below/around it. `box.min.y` (the lowest point of the
+    // ENTIRE model) is the bottom of the cliff/slope mesh, not the grass
+    // surface the player needs to stand on. Aligning that global minimum to
+    // y=0 (the old behavior) left the actual grass dozens of units above
+    // the player. Instead, raycast straight down through the model at the
+    // exact X/Z column that will become this group's local (0, 0) — i.e.
+    // where the player spawns — and use the height of whatever terrain
+    // surface is hit there. We only raycast against meshes whose name
+    // looks like terrain (ground/slope), so we hit the actual walkable
+    // surface instead of tree canopies, petals, or bark that might also
+    // sit above that column.
+    let groundY = box.min.y;
+    if (alignBottom) {
+      const terrainMeshes: THREE.Object3D[] = [];
+      clone.traverse((child) => {
+        if (child.isMesh && /grnd|ground|slope|terrain/i.test(child.name)) {
+          terrainMeshes.push(child);
+        }
+      });
+
+      const raycaster = new THREE.Raycaster();
+      raycaster.set(
+        new THREE.Vector3(center.x, box.max.y + 1, center.z),
+        new THREE.Vector3(0, -1, 0)
+      );
+      raycaster.far = box.max.y - box.min.y + 2;
+
+      const hits = raycaster.intersectObjects(
+        terrainMeshes.length > 0 ? terrainMeshes : [clone],
+        true
+      );
+
+      if (hits.length > 0) {
+        // Closest hit = topmost surface under the spawn column (i.e. the
+        // grass/ground itself, since we already excluded foliage meshes).
+        groundY = hits[0].point.y;
+      }
+    }
+
+    // Offset so the model is centered on X/Z, and (optionally) the real
+    // walkable surface under the spawn point sits exactly at y=0 of this
+    // component.
     const off = new THREE.Vector3(
       -center.x * s,
-      alignBottom ? -box.min.y * s : -center.y * s,
+      alignBottom ? -groundY * s : -center.y * s,
       -center.z * s
     );
 

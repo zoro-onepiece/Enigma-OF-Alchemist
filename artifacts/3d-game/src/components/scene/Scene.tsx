@@ -91,20 +91,22 @@ export default function Scene({ showStats = false }: SceneProps) {
 
             The character spawns at the world origin [0,0,0] and never
             raycasts against the ground — she just always stands at y=0.
-            WorldModel's alignBottom option (on by default) measures the raw
-            GLB's own bounding box and offsets it internally so its lowest
-            point lands at this group's local y=0 — but that offset is
-            applied *inside* WorldModel's own group, so the `position` prop
-            below still shifts the whole aligned model up/down as a group.
-            In-browser testing showed the model still rendering high above
-            the player despite that internal alignment, so this Y offset is
-            the external correction on top of it. -20 is a starting point
-            per direct visual testing — nudge it up/down (e.g. -15, -25)
-            until the player's feet sit exactly on the visible surface.
+            low_poly_forest.glb is an island: grass on top, a "slope" mesh
+            forming the cliffs, and a separate "water" mesh below/around it.
+            The old alignBottom logic aligned the GLB's global bounding-box
+            minimum (the base of the cliff/slope mesh) to y=0, which left the
+            actual grass surface dozens of units above the player — no fixed
+            position offset here could fix that, since the mismatch scales
+            with targetSize. WorldModel now raycasts straight down through
+            the terrain meshes (matched by name: ground/slope) at the exact
+            X/Z column that lands at this group's local (0,0) — i.e. where
+            the player spawns — and aligns THAT surface height to y=0
+            instead of the global bounding-box minimum. So no external Y
+            offset should be needed here; position stays at the origin.
             WorldModel already sets `receiveShadow = true` on every mesh it
             traverses, so shadows are on by default.
           */}
-          <WorldModel url="/models/low_poly_forest.glb" targetSize={250} position={[0, -20, 0]} />
+          <WorldModel url="/models/low_poly_forest.glb" targetSize={250} position={[0, 0, 0]} />
 
           {/* Extra trees — enable once positioned/tested:
           <WorldModel url="/models/trees_optimized.glb" targetSize={30} position={[8, 0.1, -10]} />
