@@ -36,6 +36,7 @@ export default function App() {
 
   useEffect(() => {
     console.log("[DEBUG] App mount, window.location.href =", window.location.href);
+    console.log("[DEBUG] App mount, window.location.hash =", window.location.hash);
     console.log("[DEBUG] VITE_MAGIC_PUBLISHABLE_KEY defined?", Boolean(import.meta.env.VITE_MAGIC_PUBLISHABLE_KEY));
     (async () => {
       const fromRedirect = await handleOAuthRedirect();
