@@ -1,6 +1,7 @@
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
+import { registerBlocker } from "../../../lib/worldCollision";
 
 /**
  * GreenLeafTree
@@ -39,6 +40,19 @@ export default function GreenLeafTree({
     () => Math.abs(Math.sin(position[0] * 17.13 + position[2] * 41.7)) * Math.PI * 2,
     [position],
   );
+
+  // Solid trunk footprint so the player can't walk through the tree.
+  const [px, , pz] = position;
+  const radius = 0.3 * scale;
+  useEffect(() => {
+    return registerBlocker({
+      minX: px - radius,
+      maxX: px + radius,
+      minZ: pz - radius,
+      maxZ: pz + radius,
+      isSolid: () => true,
+    });
+  }, [px, pz, radius]);
 
   useFrame((state) => {
     const canopy = canopyRef.current;

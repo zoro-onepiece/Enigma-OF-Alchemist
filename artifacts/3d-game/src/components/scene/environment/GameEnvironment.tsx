@@ -3,10 +3,10 @@ import * as THREE from "three";
 import CherryBlossomTree from "./CherryBlossomTree";
 import QuantumTree from "./QuantumTree";
 import GreenLeafTree from "./GreenLeafTree";
+import GlbForestTree from "./GlbForestTree";
 import Pathway from "./Pathway";
 import GlowingPuzzle from "./GlowingPuzzle";
 import JapaneseTemple from "./JapaneseTemple";
-import JapaneseHouse from "./JapaneseHouse";
 import { useGameStore } from "../../../store/gameStore";
 
 /**
@@ -47,48 +47,34 @@ const PATH_WAYPOINTS: [number, number][] = [
 ];
 
 const TEMPLE_POSITION: [number, number, number] = [0, 0, -36];
-// A separate, fully-walled house (with a working door) off to the side of
-// the main path, distinct from the open-pillar temple at the path's end.
-const HOUSE_POSITION: [number, number, number] = [12, 0, -16];
 
 const GROUND_SIZE = 90;
 const GROUND_SEGMENTS = 48;
 
-// Keep scattered props clear of the pathway (a loose corridor around x=0),
-// the temple's footprint near z=-36, and the house's footprint near (12,-16).
+// Keep scattered props clear of the pathway (a loose corridor around x=0)
+// and the temple's footprint near z=-36.
 function isClearOfPathAndTemple(x: number, z: number) {
   const nearPath = Math.abs(x) < 4.5 && z > -34 && z < 5;
   const nearTemple = Math.hypot(x, z + 36) < 7;
-  const nearHouse = Math.abs(x - HOUSE_POSITION[0]) < 5.5 && Math.abs(z - HOUSE_POSITION[2]) < 5;
-  return !nearPath && !nearTemple && !nearHouse;
+  return !nearPath && !nearTemple;
 }
 
 export default function GameEnvironment() {
   const puzzleSolved = useGameStore((s) => s.puzzle.solved);
   const openPuzzle = useGameStore((s) => s.openPuzzle);
 
-  // Gently randomized low-poly ground — subtle per-vertex height noise only,
-  // so it doesn't fight the player's fixed y=0 ground clamp.
+  // Perfectly flat, hard ground — no per-vertex height noise. The player's
+  // movement is clamped to a fixed y=0 plane (see Player.tsx), so any bump
+  // here would read as either floating over dips or sinking into rises.
+  // Keeping the mesh dead flat guarantees she always reads as standing
+  // firmly on solid ground everywhere, not just near the path/temple.
   const groundGeometry = useMemo(() => {
-    const geometry = new THREE.PlaneGeometry(
+    return new THREE.PlaneGeometry(
       GROUND_SIZE,
       GROUND_SIZE,
       GROUND_SEGMENTS,
       GROUND_SEGMENTS
     );
-    const rand = mulberry32(4242);
-    const position = geometry.attributes.position;
-    for (let i = 0; i < position.count; i++) {
-      const x = position.getX(i);
-      const y = position.getY(i); // pre-rotation "Y" is world Z once rotated flat
-      // Keep the area right around the path/temple flat so stepping stones
-      // and the temple platform don't appear to float or sink.
-      const clear = isClearOfPathAndTemple(x, y);
-      const noise = clear ? (rand() - 0.5) * 0.35 : 0;
-      position.setZ(i, noise);
-    }
-    geometry.computeVertexNormals();
-    return geometry;
   }, []);
 
   const cherryBlossomTrees = useMemo(() => {
@@ -133,6 +119,30 @@ export default function GameEnvironment() {
     return trees;
   }, []);
 
+  const glbForestTrees = useMemo(() => {
+    const rand = mulberry32(4040);
+    const trees: {
+      position: [number, number, number];
+      rotationY: number;
+      scale: number;
+      variant: number;
+    }[] = [];
+    let attempts = 0;
+    while (trees.length < 14 && attempts < 500) {
+      attempts++;
+      const x = (rand() - 0.5) * (GROUND_SIZE - 10);
+      const z = (rand() - 0.5) * (GROUND_SIZE - 10) - 5;
+      if (!isClearOfPathAndTemple(x, z)) continue;
+      trees.push({
+        position: [x, 0, z],
+        rotationY: rand() * Math.PI * 2,
+        scale: 1.1 + rand() * 0.7,
+        variant: Math.floor(rand() * 4),
+      });
+    }
+    return trees;
+  }, []);
+
   const puzzlePlacements = useMemo(() => {
     // Evenly spaced along the path, just off to the side so they don't
     // block the walkable stones.
@@ -153,13 +163,13 @@ export default function GameEnvironment() {
           so the temple garden reads clearly at dusk. */}
       <ambientLight intensity={0.25} color="#c9b6ff" />
 
-      {/* Ground — mossy green, gentle low-poly undulation */}
+      {/* Ground — flat, hard, light sandy-yellow autumn ground */}
       <mesh
         geometry={groundGeometry}
         rotation={[-Math.PI / 2, 0, 0]}
         receiveShadow
       >
-        <meshStandardMaterial color="#3f5d3f" roughness={0.95} />
+        <meshStandardMaterial color="#e2c17c" roughness={0.95} />
       </mesh>
 
       {/* Pathway leading to the temple */}
@@ -167,9 +177,6 @@ export default function GameEnvironment() {
 
       {/* Temple at the far end of the path */}
       <JapaneseTemple position={TEMPLE_POSITION} />
-
-      {/* Enterable house — has real walls and a door the player can open */}
-      <JapaneseHouse position={HOUSE_POSITION} />
 
       {/* Cherry blossom grove */}
       {cherryBlossomTrees.map((tree, i) => (
@@ -184,6 +191,17 @@ export default function GameEnvironment() {
       {/* Adorable green-leaf trees */}
       {greenLeafTrees.map((tree, i) => (
         <GreenLeafTree key={`green-${i}`} position={tree.position} scale={tree.scale} />
+      ))}
+
+      {/* Copies of the uploaded forest tree pack model */}
+      {glbForestTrees.map((tree, i) => (
+        <GlbForestTree
+          key={`glb-tree-${i}`}
+          position={tree.position}
+          rotationY={tree.rotationY}
+          scale={tree.scale}
+          variant={tree.variant}
+        />
       ))}
 
       {/* Glowing rune puzzles along the path */}

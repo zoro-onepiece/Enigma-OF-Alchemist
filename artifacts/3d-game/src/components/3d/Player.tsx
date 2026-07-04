@@ -367,10 +367,10 @@ function PlayerModel() {
 
     if (moving && _moveDir.lengthSq() > 1e-6) {
       _moveDir.normalize();
-      // Resolve against registered wall blockers (e.g. JapaneseHouse) so a
-      // closed door actually stops her instead of letting her walk through
-      // it — each axis is resolved independently so she slides along a
-      // wall instead of freezing when moving diagonally into it.
+      // Resolve against registered solid blockers (trees, the temple, etc.)
+      // so she can't clip through them — each axis is resolved
+      // independently so she slides along an obstacle instead of freezing
+      // when moving diagonally into it.
       const resolved = resolveMove(
         g.position.x,
         g.position.z,

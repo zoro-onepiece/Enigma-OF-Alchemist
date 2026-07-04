@@ -7,6 +7,9 @@
  * and reads fine at low-poly distances), and two warm paper-lantern lights
  * near the entrance.
  */
+import { useEffect } from "react";
+import { registerBlocker } from "../../../lib/worldCollision";
+
 export interface JapaneseTempleProps {
   position?: [number, number, number];
   rotation?: [number, number, number];
@@ -25,6 +28,20 @@ export default function JapaneseTemple({
   position = [0, 0, 0],
   rotation = [0, 0, 0],
 }: JapaneseTempleProps) {
+  // Solid platform footprint so the player can't walk through the temple
+  // base/pillars — treated as one rectangular block (matches the platform's
+  // boxGeometry args below).
+  const [px, , pz] = position;
+  useEffect(() => {
+    return registerBlocker({
+      minX: px - 4.5,
+      maxX: px + 4.5,
+      minZ: pz - 3,
+      maxZ: pz + 3,
+      isSolid: () => true,
+    });
+  }, [px, pz]);
+
   return (
     <group position={position} rotation={rotation}>
       {/* Raised stone platform base */}

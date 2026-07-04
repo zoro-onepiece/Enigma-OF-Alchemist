@@ -1,13 +1,14 @@
 /**
  * worldCollision
  *
- * Minimal, allocation-free AABB wall collision so buildings (like
- * JapaneseHouse) can actually block the player until a door is opened.
- * There's still no physics engine — this is a small shared registry of
- * axis-aligned rectangular "blockers" in world X/Z space, each with an
- * `isSolid()` check (so a door segment can flip from solid to open without
- * re-registering). Player.tsx queries `resolveMove` once per frame to slide
- * movement along walls instead of clipping through them.
+ * Minimal, allocation-free AABB collision so solid world objects (trees,
+ * the temple, etc.) actually block the player instead of letting her walk
+ * through them. There's still no physics engine — this is a small shared
+ * registry of axis-aligned rectangular "blockers" in world X/Z space, each
+ * with an `isSolid()` check (so an object could flip from solid to passable
+ * without re-registering, e.g. a future door). Player.tsx queries
+ * `resolveMove` once per frame to slide movement along obstacles instead of
+ * clipping through them.
  */
 export interface WallBlocker {
   minX: number;

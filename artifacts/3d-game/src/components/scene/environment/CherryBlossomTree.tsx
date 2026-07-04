@@ -1,5 +1,6 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { Sparkles } from "@react-three/drei";
+import { registerBlocker } from "../../../lib/worldCollision";
 
 /**
  * CherryBlossomTree
@@ -42,6 +43,19 @@ export default function CherryBlossomTree({
     const seed = Math.abs(Math.sin(position[0] * 12.9898 + position[2] * 78.233));
     return (seed - 0.5) * 0.3;
   }, [position]);
+
+  // Solid trunk footprint so the player can't walk through the tree.
+  const [px, , pz] = position;
+  const radius = 0.35 * scale;
+  useEffect(() => {
+    return registerBlocker({
+      minX: px - radius,
+      maxX: px + radius,
+      minZ: pz - radius,
+      maxZ: pz + radius,
+      isSolid: () => true,
+    });
+  }, [px, pz, radius]);
 
   return (
     <group position={position} rotation={rotation} scale={scale}>

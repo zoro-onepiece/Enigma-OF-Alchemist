@@ -1,6 +1,7 @@
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
+import { registerBlocker } from "../../../lib/worldCollision";
 
 /**
  * QuantumTree
@@ -24,6 +25,19 @@ export default function QuantumTree({
   color = "#7c3aed",
 }: QuantumTreeProps) {
   const wireframeRef = useRef<THREE.Mesh>(null);
+
+  // Solid trunk footprint so the player can't walk through the tree.
+  const [px, , pz] = position;
+  const radius = 0.3 * scale;
+  useEffect(() => {
+    return registerBlocker({
+      minX: px - radius,
+      maxX: px + radius,
+      minZ: pz - radius,
+      maxZ: pz + radius,
+      isSolid: () => true,
+    });
+  }, [px, pz, radius]);
 
   useFrame((_, delta) => {
     if (wireframeRef.current) {
