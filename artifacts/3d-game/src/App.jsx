@@ -35,14 +35,18 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(true);
 
   useEffect(() => {
+    console.log("[DEBUG] App mount, window.location.href =", window.location.href);
+    console.log("[DEBUG] VITE_MAGIC_PUBLISHABLE_KEY defined?", Boolean(import.meta.env.VITE_MAGIC_PUBLISHABLE_KEY));
     (async () => {
       const fromRedirect = await handleOAuthRedirect();
+      console.log("[DEBUG] handleOAuthRedirect() resolved with:", fromRedirect);
       if (fromRedirect) {
         setWalletAddress(fromRedirect);
         setAuthLoading(false);
         return;
       }
       const existing = await getExistingSession();
+      console.log("[DEBUG] getExistingSession() resolved with:", existing);
       if (existing) setWalletAddress(existing);
       setAuthLoading(false);
     })();

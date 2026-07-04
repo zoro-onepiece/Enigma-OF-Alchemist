@@ -36,6 +36,8 @@ export function handleOAuthRedirect() {
 
   redirectPromise = (async () => {
     const params = new URLSearchParams(window.location.search);
+    console.log("[DEBUG] handleOAuthRedirect: search params =", window.location.search);
+    console.log("[DEBUG] handleOAuthRedirect: param keys =", Array.from(params.keys()));
     // Broad detection: any of the params Magic/Google attach on return
     const looksLikeOAuthReturn =
       params.has("magic_oauth_request_id") ||
@@ -44,16 +46,20 @@ export function handleOAuthRedirect() {
       (params.has("state") && params.has("code")) ||
       params.has("code");
 
+    console.log("[DEBUG] handleOAuthRedirect: looksLikeOAuthReturn =", looksLikeOAuthReturn);
+
     if (!looksLikeOAuthReturn) return null;
 
     try {
       const result = await magic.oauth2.getRedirectResult();
+      console.log("[DEBUG] handleOAuthRedirect: getRedirectResult() raw result =", result);
       window.history.replaceState({}, "", window.location.pathname);
       const addr = result?.magic?.userMetadata?.publicAddress ?? null;
       console.log("[magic] OAuth redirect processed, address:", addr);
       return addr;
     } catch (err) {
       console.error("[magic] getRedirectResult failed:", err);
+      console.error("[DEBUG] getRedirectResult error name/message/stack:", err?.name, err?.message, err?.stack);
       // Rescue path: the session may still exist even if result
       // processing hiccuped — check before giving up.
       try {
@@ -62,7 +68,9 @@ export function handleOAuthRedirect() {
           console.log("[magic] rescued existing session:", info?.publicAddress);
           return info?.publicAddress ?? null;
         }
-      } catch {}
+      } catch (rescueErr) {
+        console.error("[DEBUG] rescue path isLoggedIn/getInfo failed:", rescueErr);
+      }
       return null;
     }
   })();
