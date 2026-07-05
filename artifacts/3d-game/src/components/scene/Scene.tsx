@@ -135,9 +135,13 @@ export default function Scene({
         {/* Explicit background + fog so the horizon blends seamlessly with
             the sky at any zoom/camera distance — no white gaps beyond the
             ground plane or Sky dome. GameEnvironment.tsx intentionally does
-            NOT declare its own <fog>; this is the single source of truth. */}
+            NOT declare its own <fog>; this is the single source of truth.
+            Far distance (300) is pushed out past DistantScenery's mountain
+            ring (max radius ~240) and floating islands (max radius ~220) so
+            they fade softly into the sky color instead of hard-clipping at
+            the old 220 cutoff, which used to make them vanish abruptly. */}
         <color attach="background" args={[SKY_COLOR]} />
-        <fog attach="fog" args={[SKY_COLOR, 60, 220]} />
+        <fog attach="fog" args={[SKY_COLOR, 60, 300]} />
 
         {/* ── Code-generated Japanese temple garden environment ────────────
             Ground, pathway, temple, trees, and puzzle props — see

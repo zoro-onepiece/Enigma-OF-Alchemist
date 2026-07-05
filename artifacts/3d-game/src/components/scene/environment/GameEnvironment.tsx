@@ -1,9 +1,8 @@
 import { useMemo } from "react";
 import * as THREE from "three";
-import CherryBlossomTree from "./CherryBlossomTree";
-import QuantumTree from "./QuantumTree";
-import GreenLeafTree from "./GreenLeafTree";
 import GlbForestTree from "./GlbForestTree";
+import GlbAutumnTree from "./GlbAutumnTree";
+import DistantScenery from "./DistantScenery";
 import Pathway from "./Pathway";
 import GlowingPuzzle from "./GlowingPuzzle";
 import JapaneseTemple from "./JapaneseTemple";
@@ -77,44 +76,31 @@ export default function GameEnvironment() {
     );
   }, []);
 
-  const cherryBlossomTrees = useMemo(() => {
+  // Artist-made GLB trees (5 species: green/dry/autumn-yellow/autumn-brown/
+  // stylized) replacing the old fully-procedural CherryBlossomTree /
+  // QuantumTree / GreenLeafTree components — same total instance count as
+  // before (16 + 5 + 12 = 33) so density/FPS stay roughly unchanged, just
+  // spread evenly across the 5 real-geometry variants instead.
+  const glbAutumnTrees = useMemo(() => {
     const rand = mulberry32(1010);
-    const trees: { position: [number, number, number]; scale: number }[] = [];
+    const trees: {
+      position: [number, number, number];
+      rotationY: number;
+      scale: number;
+      variant: number;
+    }[] = [];
     let attempts = 0;
-    while (trees.length < 16 && attempts < 500) {
+    while (trees.length < 33 && attempts < 1000) {
       attempts++;
       const x = (rand() - 0.5) * (GROUND_SIZE - 10);
       const z = (rand() - 0.5) * (GROUND_SIZE - 10) - 5;
       if (!isClearOfPathAndTemple(x, z)) continue;
-      trees.push({ position: [x, 0, z], scale: 0.9 + rand() * 0.5 });
-    }
-    return trees;
-  }, []);
-
-  const quantumTrees = useMemo(() => {
-    const rand = mulberry32(2020);
-    const trees: { position: [number, number, number] }[] = [];
-    let attempts = 0;
-    while (trees.length < 5 && attempts < 500) {
-      attempts++;
-      const x = (rand() - 0.5) * (GROUND_SIZE - 16);
-      const z = (rand() - 0.5) * (GROUND_SIZE - 16) - 5;
-      if (!isClearOfPathAndTemple(x, z)) continue;
-      trees.push({ position: [x, 0, z] });
-    }
-    return trees;
-  }, []);
-
-  const greenLeafTrees = useMemo(() => {
-    const rand = mulberry32(3030);
-    const trees: { position: [number, number, number]; scale: number }[] = [];
-    let attempts = 0;
-    while (trees.length < 12 && attempts < 500) {
-      attempts++;
-      const x = (rand() - 0.5) * (GROUND_SIZE - 10);
-      const z = (rand() - 0.5) * (GROUND_SIZE - 10) - 5;
-      if (!isClearOfPathAndTemple(x, z)) continue;
-      trees.push({ position: [x, 0, z], scale: 0.85 + rand() * 0.4 });
+      trees.push({
+        position: [x, 0, z],
+        rotationY: rand() * Math.PI * 2,
+        scale: 0.85 + rand() * 0.5,
+        variant: trees.length % 5,
+      });
     }
     return trees;
   }, []);
@@ -179,19 +165,16 @@ export default function GameEnvironment() {
       {/* Temple at the far end of the path */}
       <JapaneseTemple position={TEMPLE_POSITION} />
 
-      {/* Cherry blossom grove */}
-      {cherryBlossomTrees.map((tree, i) => (
-        <CherryBlossomTree key={`cherry-${i}`} position={tree.position} scale={tree.scale} />
-      ))}
-
-      {/* Quantum trees */}
-      {quantumTrees.map((tree, i) => (
-        <QuantumTree key={`quantum-${i}`} position={tree.position} />
-      ))}
-
-      {/* Adorable green-leaf trees */}
-      {greenLeafTrees.map((tree, i) => (
-        <GreenLeafTree key={`green-${i}`} position={tree.position} scale={tree.scale} />
+      {/* Autumn tree grove — artist-made GLB species (replaces the old
+          fully-procedural CherryBlossomTree / QuantumTree / GreenLeafTree) */}
+      {glbAutumnTrees.map((tree, i) => (
+        <GlbAutumnTree
+          key={`autumn-tree-${i}`}
+          position={tree.position}
+          rotationY={tree.rotationY}
+          scale={tree.scale}
+          variant={tree.variant}
+        />
       ))}
 
       {/* Copies of the uploaded forest tree pack model */}
@@ -215,6 +198,11 @@ export default function GameEnvironment() {
           onActivate={openPuzzle}
         />
       ))}
+
+      {/* Horizon backdrop — mountains, floating islands, extra clouds, all
+          far outside the walkable ground so it never interacts with
+          collision/gameplay. See DistantScenery.tsx. */}
+      <DistantScenery />
     </>
   );
 }
