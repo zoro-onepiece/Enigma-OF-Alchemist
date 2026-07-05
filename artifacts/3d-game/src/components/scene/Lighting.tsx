@@ -4,6 +4,12 @@ import { PLAYER_SPAWN } from "../3d/Player";
 // place. Positions are centered on PLAYER_SPAWN (not the world origin)
 // since the character doesn't necessarily spawn at [0,0,0] forever, and
 // shadow frustums are sized for the ~250-unit-wide scaled-up forest.
+
+// Shared with Scene.tsx's <Sky sunPosition={SUN_POSITION}> so the visible
+// sun and the shadow-casting directional light below always point the same
+// direction — high overhead, low turbidity daytime sun.
+export const SUN_POSITION: [number, number, number] = [120, 90, 60];
+
 export default function Lighting() {
   return (
     <>
@@ -42,10 +48,17 @@ export default function Lighting() {
       />
 
       {/* Shadow-casting sun light — re-centered on spawn, sized for the
-          ~250-unit-wide forest. */}
+          ~250-unit-wide forest. Direction matches SUN_POSITION (the same
+          vector Scene.tsx feeds to <Sky>), scaled down to a nearby offset
+          so the shadow camera frustum below still frames the play area —
+          only the direction needs to match, not the absolute distance. */}
       <directionalLight
         castShadow
-        position={[PLAYER_SPAWN[0] + 15, 25, PLAYER_SPAWN[2] + 10]}
+        position={[
+          PLAYER_SPAWN[0] + SUN_POSITION[0] / 4,
+          SUN_POSITION[1] / 4,
+          PLAYER_SPAWN[2] + SUN_POSITION[2] / 4,
+        ]}
         intensity={1.4}
         shadow-mapSize={[2048, 2048]}
         shadow-camera-left={-60}

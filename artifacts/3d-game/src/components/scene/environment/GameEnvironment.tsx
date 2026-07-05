@@ -156,12 +156,13 @@ export default function GameEnvironment() {
 
   return (
     <>
-      {/* Dusky purple-blue fog for atmosphere */}
-      <fog attach="fog" args={["#2a1f3d", 15, 85]} />
+      {/* Fog now lives solely in Scene.tsx (single source of truth, matched
+          to the sky color) — no second <fog> declared here. */}
 
       {/* Slightly stronger ambient fill on top of Scene.tsx's lighting rig,
-          so the temple garden reads clearly at dusk. */}
-      <ambientLight intensity={0.25} color="#c9b6ff" />
+          so the temple garden reads clearly in daylight. Warm/neutral now
+          instead of the old dusk purple tint, to match the blue-sky look. */}
+      <ambientLight intensity={0.25} color="#fff4e0" />
 
       {/* Ground — flat, hard, light sandy-yellow autumn ground */}
       <mesh

@@ -1,0 +1,110 @@
+// src/App.jsx
+import React, { useEffect, useState } from "react";
+import Scene from "@/components/scene/Scene";
+import MainMenu from "@/MainMenu";
+import {
+  loginWithGoogle,
+  handleOAuthRedirect,
+  getExistingSession,
+  logout,
+} from "@/lib/magic";
+
+const DEV_WALLET = "0xDEV000000000000000000000000000000DEV";
+
+export default function App() {
+  const [walletAddress, setWalletAddress] = useState(null);
+  const [isDevSession, setIsDevSession] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  useEffect(() => {
+    console.log("[DEBUG] App mount, URL:", window.location.href);
+    
+    (async () => {
+      try {
+        // STEP 1: Check if we're returning from OAuth redirect
+        const fromRedirect = await handleOAuthRedirect();
+        console.log("[DEBUG] Redirect result:", fromRedirect);
+        
+        if (fromRedirect) {
+          setWalletAddress(fromRedirect);
+          setAuthLoading(false);
+          return;
+        }
+
+        // STEP 2: Check for existing session
+        const existing = await getExistingSession();
+        console.log("[DEBUG] Existing session:", existing);
+        
+        if (existing) {
+          setWalletAddress(existing);
+        }
+        
+        setAuthLoading(false);
+      } catch (err) {
+        console.error("[DEBUG] Auth flow error:", err);
+        setAuthLoading(false);
+      }
+    })();
+  }, []);
+
+  const handleLogin = async () => {
+    setAuthLoading(true);
+    try {
+      console.log("[DEBUG] Initiating Google login...");
+      await loginWithGoogle();
+      // This redirects away, so code below won't run
+    } catch (err) {
+      console.error("Login failed:", err);
+      setAuthLoading(false);
+    }
+  };
+
+  const handleDevBypass = () => {
+    console.warn("[dev] Auth bypassed — using fake wallet:", DEV_WALLET);
+    setIsDevSession(true);
+    setWalletAddress(DEV_WALLET);
+    setAuthLoading(false);
+  };
+
+  const handleLogout = async () => {
+    if (!isDevSession) {
+      await logout();
+    }
+    setIsDevSession(false);
+    setWalletAddress(null);
+  };
+
+  const isLoggedIn = Boolean(walletAddress);
+
+  return (
+    <div className="relative h-screen w-screen overflow-hidden bg-slate-950">
+      {isLoggedIn && (
+        <>
+          <Scene walletAddress={walletAddress} onConnectWallet={handleLogout} />
+          {isDevSession && (
+            <div className="pointer-events-none absolute bottom-2 left-1/2 z-[70] -translate-x-1/2 rounded border border-amber-600/50 bg-stone-950/80 px-3 py-1 text-[10px] uppercase tracking-[0.25em] text-amber-400/80">
+              Dev Session — Not Logged In
+            </div>
+          )}
+        </>
+      )}
+
+      {!isLoggedIn && !authLoading && (
+        <MainMenu
+          onLogin={handleLogin}
+          onDevBypass={handleDevBypass}
+          isLoading={authLoading}
+        />
+      )}
+      
+      {authLoading && (
+        <div className="flex h-screen w-screen items-center justify-center bg-slate-950 text-white">
+          <div className="text-center">
+            <div className="mb-4 h-8 w-8 animate-spin rounded-full border-2 border-white border-t-transparent mx-auto"></div>
+            <p>Loading authentication...</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

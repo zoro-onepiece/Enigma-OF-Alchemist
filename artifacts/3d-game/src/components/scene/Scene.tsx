@@ -1,10 +1,16 @@
 import { useState } from "react";
 import { Canvas } from "@react-three/fiber";
-import { Environment, Sky, Stats, KeyboardControls } from "@react-three/drei";
-import Lighting from "./Lighting";
+import { Environment, Sky, Clouds, Cloud, Stats, KeyboardControls } from "@react-three/drei";
+import * as THREE from "three";
+import Lighting, { SUN_POSITION } from "./Lighting";
 import GameEnvironment from "./environment/GameEnvironment";
 import Player, { playerKeyboardMap } from "../3d/Player";
 import GameHUD from "../hud/GameHUD";
+
+// Shared daytime sky color — used for the scene background, fog, and (via
+// Lighting.tsx's SUN_POSITION export) kept visually consistent with the sun
+// direction so the directional shadow light matches what <Sky> renders.
+const SKY_COLOR = "#87ceeb";
 
 // ─── WebGL capability check ───────────────────────────────────────────────────
 function isWebGLAvailable(): boolean {
@@ -94,9 +100,29 @@ export default function Scene({
         {/* ── Lighting ──────────────────────────────────────────────────── */}
         <Lighting />
 
-        {/* ── Sky / ambience ────────────────────────────────────────────── */}
-        <Sky sunPosition={[15, 25, 10]} turbidity={6} rayleigh={1.2} />
-        <Environment preset="night" />
+        {/* ── Sky / ambience ────────────────────────────────────────────────
+            Bright blue daytime look: sun high in the sky, low turbidity for
+            a clean atmosphere, soft white clouds drifting well above the
+            treeline (y ≈ 40–80). SUN_POSITION is shared with Lighting.tsx's
+            shadow-casting sun light so the shadows stay aligned with the
+            visible sun. Environment only supplies ambient/reflection
+            lighting here (background={false}) — the actual sky dome/color
+            comes from <Sky> + the explicit background <color> below. */}
+        <Sky sunPosition={SUN_POSITION} turbidity={1} rayleigh={0.4} mieCoefficient={0.003} mieDirectionalG={0.7} />
+        <Environment preset="park" background={false} />
+        <Clouds material={THREE.MeshBasicMaterial} limit={40} range={60}>
+          <Cloud seed={1} position={[-30, 55, -40]} bounds={[40, 8, 40]} volume={22} opacity={0.55} speed={0.06} />
+          <Cloud seed={7} position={[35, 68, -20]} bounds={[45, 10, 45]} volume={26} opacity={0.5} speed={0.05} />
+          <Cloud seed={13} position={[-10, 78, 30]} bounds={[50, 9, 50]} volume={24} opacity={0.5} speed={0.07} />
+          <Cloud seed={21} position={[25, 45, 45]} bounds={[35, 7, 35]} volume={18} opacity={0.6} speed={0.05} />
+        </Clouds>
+
+        {/* Explicit background + fog so the horizon blends seamlessly with
+            the sky at any zoom/camera distance — no white gaps beyond the
+            ground plane or Sky dome. GameEnvironment.tsx intentionally does
+            NOT declare its own <fog>; this is the single source of truth. */}
+        <color attach="background" args={[SKY_COLOR]} />
+        <fog attach="fog" args={[SKY_COLOR, 60, 220]} />
 
         {/* ── Code-generated Japanese temple garden environment ────────────
             Ground, pathway, temple, trees, and puzzle props — see

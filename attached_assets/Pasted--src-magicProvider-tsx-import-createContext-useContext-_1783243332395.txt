@@ -1,0 +1,146 @@
+// src/magicProvider.tsx
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  ReactNode,
+} from "react";
+import { InstanceWithExtensions, SDKBase, Magic } from "magic-sdk";
+import { OAuthExtension } from "@magic-ext/oauth2";
+import { handleOAuthRedirect, getExistingSession, logout as magicLogout } from "@/lib/magic";
+
+type MagicInstance = InstanceWithExtensions<SDKBase, OAuthExtension[]>;
+
+interface MagicContextValue {
+  magic: MagicInstance | null;
+  isLoggedIn: boolean;
+  isLoading: boolean;
+  userEmail: string | null;
+  walletAddress: string | null;
+  login: () => Promise<void>;
+  logout: () => Promise<void>;
+}
+
+const MagicContext = createContext<MagicContextValue>({
+  magic: null,
+  isLoggedIn: false,
+  isLoading: true,
+  userEmail: null,
+  walletAddress: null,
+  login: async () => {},
+  logout: async () => {},
+});
+
+export function useMagic() {
+  return useContext(MagicContext);
+}
+
+interface MagicProviderProps {
+  children: ReactNode;
+}
+
+export function MagicProvider({ children }: MagicProviderProps) {
+  const [magic, setMagic] = useState<MagicInstance | null>(null);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
+
+  useEffect(() => {
+    const key = import.meta.env.VITE_MAGIC_PUBLISHABLE_KEY;
+    if (!key) {
+      console.warn("[MagicProvider] VITE_MAGIC_PUBLISHABLE_KEY is not set.");
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      const m = new Magic(key, {
+        extensions: [new OAuthExtension()],
+        network: {
+          rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",
+          chainId: 421614,
+        },
+      });
+
+      setMagic(m);
+
+      // Check session on mount
+      const checkSession = async () => {
+        try {
+          // First check if we're coming from OAuth redirect
+          const redirectAddress = await handleOAuthRedirect();
+          if (redirectAddress) {
+            setIsLoggedIn(true);
+            setWalletAddress(redirectAddress);
+            
+            // Get user info
+            const info = await m.user.getInfo();
+            setUserEmail(info.email ?? null);
+            setIsLoading(false);
+            return;
+          }
+
+          // Check existing session
+          const address = await getExistingSession();
+          if (address) {
+            setIsLoggedIn(true);
+            setWalletAddress(address);
+            
+            const info = await m.user.getInfo();
+            setUserEmail(info.email ?? null);
+          }
+        } catch (err) {
+          console.error("[MagicProvider] Session check failed:", err);
+        } finally {
+          setIsLoading(false);
+        }
+      };
+
+      checkSession();
+    } catch (err) {
+      console.error("[MagicProvider] Initialization failed:", err);
+      setIsLoading(false);
+    }
+  }, []);
+
+  const login = async () => {
+    if (!magic) return;
+    setIsLoading(true);
+    try {
+      // Use redirect flow
+      await magic.oauth2.loginWithRedirect({
+        provider: "google",
+        redirectURI: window.location.origin,
+      });
+    } catch (err) {
+      console.error("[MagicProvider] Login failed:", err);
+      setIsLoading(false);
+    }
+  };
+
+  const logout = async () => {
+    if (!magic) return;
+    await magicLogout();
+    setIsLoggedIn(false);
+    setUserEmail(null);
+    setWalletAddress(null);
+  };
+
+  return (
+    <MagicContext.Provider
+      value={{ 
+        magic, 
+        isLoggedIn, 
+        isLoading, 
+        userEmail, 
+        walletAddress, 
+        login, 
+        logout 
+      }}
+    >
+      {children}
+    </MagicContext.Provider>
+  );
+}
