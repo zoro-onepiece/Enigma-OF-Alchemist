@@ -1,1 +1,98 @@
-[]
+[
+  {
+    "id": "6f1a2b3c-0001-4a11-9c11-000000000001",
+    "position": 1,
+    "filepath": "src/pages/slides/Title.tsx",
+    "title": "Title",
+    "description": "Enigma of Alchemist — hackathon midpoint title slide",
+    "speakerNotes": ""
+  },
+  {
+    "id": "6f1a2b3c-0002-4a11-9c11-000000000002",
+    "position": 2,
+    "filepath": "src/pages/slides/Concept.tsx",
+    "title": "Concept",
+    "description": "Explore, solve, collect, earn — the core concept",
+    "speakerNotes": ""
+  },
+  {
+    "id": "6f1a2b3c-0003-4a11-9c11-000000000003",
+    "position": 3,
+    "filepath": "src/pages/slides/TechStack.tsx",
+    "title": "Tech Stack",
+    "description": "Frontend, 3D, state, Web3 auth, dev, and asset pipeline",
+    "speakerNotes": ""
+  },
+  {
+    "id": "6f1a2b3c-0004-4a11-9c11-000000000004",
+    "position": 4,
+    "filepath": "src/pages/slides/GameWorld.tsx",
+    "title": "The Game World",
+    "description": "Island terrain, sky, temple, trees, and butterflies",
+    "speakerNotes": ""
+  },
+  {
+    "id": "6f1a2b3c-0005-4a11-9c11-000000000005",
+    "position": 5,
+    "filepath": "src/pages/slides/CharacterControls.tsx",
+    "title": "Character & Controls",
+    "description": "Movement, camera, and collision",
+    "speakerNotes": ""
+  },
+  {
+    "id": "6f1a2b3c-0006-4a11-9c11-000000000006",
+    "position": 6,
+    "filepath": "src/pages/slides/Web3Auth.tsx",
+    "title": "Web3 Authentication",
+    "description": "Magic.link login and wallet creation",
+    "speakerNotes": ""
+  },
+  {
+    "id": "6f1a2b3c-0007-4a11-9c11-000000000007",
+    "position": 7,
+    "filepath": "src/pages/slides/GameHUD.tsx",
+    "title": "Game HUD",
+    "description": "Fantasy-themed overlay driven by Zustand",
+    "speakerNotes": ""
+  },
+  {
+    "id": "6f1a2b3c-0008-4a11-9c11-000000000008",
+    "position": 8,
+    "filepath": "src/pages/slides/PuzzleSystem.tsx",
+    "title": "Puzzle System",
+    "description": "Four pedestals, four alchemical mini-games",
+    "speakerNotes": ""
+  },
+  {
+    "id": "6f1a2b3c-0009-4a11-9c11-000000000009",
+    "position": 9,
+    "filepath": "src/pages/slides/PolishImmersion.tsx",
+    "title": "Polish & Immersion",
+    "description": "Audio, particles, and the finale sequence",
+    "speakerNotes": ""
+  },
+  {
+    "id": "6f1a2b3c-0010-4a11-9c11-000000000010",
+    "position": 10,
+    "filepath": "src/pages/slides/Web3Roadmap.tsx",
+    "title": "Web3 Roadmap",
+    "description": "NFT minting hooks and the next phase on-chain",
+    "speakerNotes": ""
+  },
+  {
+    "id": "6f1a2b3c-0011-4a11-9c11-000000000011",
+    "position": 11,
+    "filepath": "src/pages/slides/ChallengesSolved.tsx",
+    "title": "Challenges Solved",
+    "description": "Asset weight, OAuth, scale, and collision",
+    "speakerNotes": ""
+  },
+  {
+    "id": "6f1a2b3c-0012-4a11-9c11-000000000012",
+    "position": 12,
+    "filepath": "src/pages/slides/TeamAndClosing.tsx",
+    "title": "Team & Division of Work",
+    "description": "Roles and midpoint status",
+    "speakerNotes": ""
+  }
+]
