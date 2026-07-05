@@ -187,9 +187,12 @@ export default function GameEnvironment() {
   }, []);
 
   // Procedural grass tufts (see GrassTufts.tsx for why — no real grass GLB
-  // was provided) scattered across the otherwise-bare dirt between the
-  // path, temple, and trees. Single InstancedMesh draw call regardless of
-  // count, so density here is free performance-wise.
+  // was provided) covering the *entire* ground floor, not just scattered
+  // clumps. A jittered grid (rather than pure rejection-sampling) gives
+  // even, gap-free coverage everywhere except the pathway/temple footprint,
+  // while still reading as natural thanks to per-cell position/rotation/
+  // scale jitter. Single InstancedMesh draw call regardless of count, so
+  // this density is still cheap.
   const grassTufts = useMemo(() => {
     const rand = mulberry32(6060);
     const tufts: {
@@ -197,18 +200,24 @@ export default function GameEnvironment() {
       rotationY: number;
       scale: number;
     }[] = [];
-    let attempts = 0;
-    while (tufts.length < 260 && attempts < 3000) {
-      attempts++;
-      const x = (rand() - 0.5) * (GROUND_SIZE - 6);
-      const z = (rand() - 0.5) * (GROUND_SIZE - 6) - 5;
-      if (!isClearOfPathAndTemple(x, z)) continue;
-      tufts.push({
-        position: [x, 0, z],
-        rotationY: rand() * Math.PI * 2,
-        scale: 0.7 + rand() * 0.8,
-      });
+
+    const spacing = 0.9;
+    const half = (GROUND_SIZE - 2) / 2;
+    const zOffset = -5;
+
+    for (let gx = -half; gx <= half; gx += spacing) {
+      for (let gz = -half; gz <= half; gz += spacing) {
+        const x = gx + (rand() - 0.5) * spacing * 0.8;
+        const z = gz + zOffset + (rand() - 0.5) * spacing * 0.8;
+        if (!isClearOfPathAndTemple(x, z)) continue;
+        tufts.push({
+          position: [x, 0, z],
+          rotationY: rand() * Math.PI * 2,
+          scale: 0.7 + rand() * 0.8,
+        });
+      }
     }
+
     return tufts;
   }, []);
 
