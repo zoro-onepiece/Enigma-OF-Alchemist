@@ -3,6 +3,7 @@ import * as THREE from "three";
 import GlbForestTree from "./GlbForestTree";
 import GlbAutumnTree from "./GlbAutumnTree";
 import GlbFlowerPot from "./GlbFlowerPot";
+import GrassTufts from "./GrassTufts";
 import DistantScenery from "./DistantScenery";
 import Pathway from "./Pathway";
 import GlowingPuzzle from "./GlowingPuzzle";
@@ -185,6 +186,32 @@ export default function GameEnvironment() {
     return pots;
   }, []);
 
+  // Procedural grass tufts (see GrassTufts.tsx for why — no real grass GLB
+  // was provided) scattered across the otherwise-bare dirt between the
+  // path, temple, and trees. Single InstancedMesh draw call regardless of
+  // count, so density here is free performance-wise.
+  const grassTufts = useMemo(() => {
+    const rand = mulberry32(6060);
+    const tufts: {
+      position: [number, number, number];
+      rotationY: number;
+      scale: number;
+    }[] = [];
+    let attempts = 0;
+    while (tufts.length < 260 && attempts < 3000) {
+      attempts++;
+      const x = (rand() - 0.5) * (GROUND_SIZE - 6);
+      const z = (rand() - 0.5) * (GROUND_SIZE - 6) - 5;
+      if (!isClearOfPathAndTemple(x, z)) continue;
+      tufts.push({
+        position: [x, 0, z],
+        rotationY: rand() * Math.PI * 2,
+        scale: 0.7 + rand() * 0.8,
+      });
+    }
+    return tufts;
+  }, []);
+
   return (
     <>
       {/* Fog now lives solely in Scene.tsx (single source of truth, matched
@@ -220,6 +247,10 @@ export default function GameEnvironment() {
           scale={pot.scale}
         />
       ))}
+
+      {/* Procedural grass tufts filling the bare dirt — see GrassTufts.tsx.
+          Single instanced draw call, purely decorative. */}
+      <GrassTufts placements={grassTufts} />
 
       {/* Autumn tree grove — artist-made GLB species (replaces the old
           fully-procedural CherryBlossomTree / QuantumTree / GreenLeafTree) */}
