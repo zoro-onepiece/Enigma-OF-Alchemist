@@ -12,7 +12,8 @@
  * board that way instead of randomizing tile states directly, which could
  * otherwise produce unsolvable boards.
  */
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useRunicSound } from "./useRunicSound";
 
 interface RunicLightsProps {
   onWin: () => void;
@@ -22,6 +23,7 @@ const GRID_SIZE = 3;
 const CELL_COUNT = GRID_SIZE * GRID_SIZE;
 const MIN_SCRAMBLE_MOVES = 5;
 const MAX_SCRAMBLE_MOVES = 7;
+const STUCK_HINT_MOVE_THRESHOLD = 15;
 
 function neighborsOf(index: number): number[] {
   const row = Math.floor(index / GRID_SIZE);
@@ -61,18 +63,22 @@ export default function RunicLights({ onWin }: RunicLightsProps) {
   const [lit, setLit] = useState<boolean[]>(() => generateScrambledBoard());
   const [moves, setMoves] = useState(0);
   const [rippling, setRippling] = useState<Set<number>>(new Set());
+  const [showStuckHint, setShowStuckHint] = useState(false);
   const rippleTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { playToggle, playWin, playHint } = useRunicSound();
 
   const handleReset = () => {
     setLit(generateScrambledBoard());
     setMoves(0);
     setRippling(new Set());
+    setShowStuckHint(false);
   };
 
   const handleTileClick = (index: number) => {
     const next = applyToggle(lit, index);
     setLit(next);
     setMoves((m) => m + 1);
+    playToggle(next[index]);
 
     // Briefly mark the clicked tile + its neighbors so each one plays a
     // ripple animation, visually tying the click to the tiles it affects.
@@ -81,9 +87,21 @@ export default function RunicLights({ onWin }: RunicLightsProps) {
     rippleTimeout.current = setTimeout(() => setRippling(new Set()), 420);
 
     if (next.every((v) => v)) {
+      setShowStuckHint(false);
+      setTimeout(() => playWin(), 80);
       setTimeout(() => onWin(), 250);
     }
   };
+
+  // Nudge the player toward Reset if they've been grinding for a while
+  // without solving it — a scramble is never unsolvable, but a fresh
+  // board can feel friendlier than hunting for the last few moves.
+  useEffect(() => {
+    if (moves > 0 && moves % STUCK_HINT_MOVE_THRESHOLD === 0 && !lit.every((v) => v)) {
+      setShowStuckHint(true);
+      playHint();
+    }
+  }, [moves, lit, playHint]);
 
   return (
     <div>
@@ -140,7 +158,27 @@ export default function RunicLights({ onWin }: RunicLightsProps) {
           35% { transform: scale(1.12); box-shadow: 0 0 30px rgba(250,204,21,0.9); }
           100% { transform: scale(1); box-shadow: 0 0 16px rgba(245,158,11,0.55); }
         }
+        @keyframes runic-hint-in {
+          0% { opacity: 0; transform: translateY(-6px); }
+          100% { opacity: 1; transform: translateY(0); }
+        }
       `}</style>
+
+      {showStuckHint && (
+        <div
+          className="mb-4 rounded-lg border border-amber-600/40 bg-amber-950/40 px-3 py-2 text-center text-xs text-amber-200/90"
+          style={{ animation: "runic-hint-in 0.25s ease-out" }}
+        >
+          Still tangled? Try{" "}
+          <button
+            onClick={handleReset}
+            className="underline underline-offset-2 hover:text-amber-100"
+          >
+            resetting the runes
+          </button>{" "}
+          for a fresh pattern.
+        </div>
+      )}
 
       <button
         onClick={handleReset}
