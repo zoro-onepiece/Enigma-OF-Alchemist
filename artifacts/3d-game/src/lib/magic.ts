@@ -17,14 +17,20 @@
 // redirect).
 
 import { Magic } from "magic-sdk";
+import { OAuthExtension } from "@magic-ext/oauth2";
 
 const ARBITRUM_SEPOLIA = {
   rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",
   chainId: 421614,
 };
 
+// The OAuth extension must be registered here, or `magic.oauth2` stays
+// undefined and any call to loginWithGoogle()/getRedirectResult() throws
+// "Cannot read properties of undefined" instead of the intended
+// timeout/graceful-fallback behavior below.
 export const magic = new Magic(import.meta.env.VITE_MAGIC_PUBLISHABLE_KEY, {
   network: ARBITRUM_SEPOLIA,
+  extensions: [new OAuthExtension()],
 });
 
 // Magic's SDK calls (isLoggedIn/getInfo/getRedirectResult/loginWithMagicLink)
