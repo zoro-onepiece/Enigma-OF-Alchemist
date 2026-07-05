@@ -3,8 +3,8 @@
  *
  * Fantasy-styled DOM overlay mounted by Scene.tsx whenever
  * gameStore.phase === 'puzzle'. Maps each of the 4 world puzzle ids to a
- * distinct mini-game component (Rune Memory, Alchemy Match-3, Potion
- * Mixing, Sigil Pairs). The close (X) button sets phase back to
+ * distinct mini-game component (Rune Memory, Alchemy Match-3, Runic
+ * Lights, Sigil Pairs). The close (X) button sets phase back to
  * 'exploring' via onClose WITHOUT solving the puzzle, so it stays
  * unsolved and replayable. All key/mouse events inside the modal call
  * stopPropagation so they never leak through to the 3D scene's controls.
@@ -17,7 +17,7 @@
 import { useState, type ReactElement } from "react";
 import RuneMemoryGame from "./RuneMemoryGame";
 import AlchemyMatch3Game from "./AlchemyMatch3Game";
-import PotionMixingGame from "./PotionMixingGame";
+import RunicLights from "./games/RunicLights";
 import SigilPairsGame from "./SigilPairsGame";
 
 interface PuzzleModalProps {
@@ -47,9 +47,9 @@ const PUZZLE_CONFIG: Record<string, PuzzleConfig> = {
     Component: AlchemyMatch3Game,
   },
   "puzzle-3": {
-    name: "Potion Mixing",
-    subtitle: "Brew the Recipe",
-    Component: PotionMixingGame,
+    name: "Runic Lights",
+    subtitle: "Awaken the Grid",
+    Component: RunicLights,
   },
   "puzzle-4": {
     name: "Sigil Pairs",
