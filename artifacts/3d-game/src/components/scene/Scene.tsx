@@ -6,7 +6,7 @@ import Lighting, { SUN_POSITION } from "./Lighting";
 import GameEnvironment from "./environment/GameEnvironment";
 import Player, { playerKeyboardMap } from "../3d/Player";
 import GameHUD from "../hud/GameHUD";
-import PuzzleModal from "../ui/PuzzleModal";
+import PuzzleModal from "../puzzles/PuzzleModal";
 import { useGameStore } from "../../store/gameStore";
 import { ISLAND_SCALE } from "../../lib/worldCollision";
 
