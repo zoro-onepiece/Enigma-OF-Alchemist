@@ -223,4 +223,6 @@ export default function FlowerField({ placements }: FlowerFieldProps) {
   );
 }
 
-useGLTF.preload(MODEL_PATH);
+// Task 1: preload removed — this component is no longer mounted anywhere,
+// so preloading its GLB would load an asset that's never used. Re-add
+// `useGLTF.preload(MODEL_PATH);` here if flowers are reintroduced.
