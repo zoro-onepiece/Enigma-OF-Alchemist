@@ -1,0 +1,18 @@
+Upgrade the ground vegetation: the current grass is far too sparse (single blades here and there). I want dense grass across the whole walkable island, plus flowers from a GLB file I've uploaded, scattered across the island. Do NOT modify Player.tsx internals, GameHUD internals, or puzzle logic. Performance is critical — everything below must use GPU instancing.
+Task 1 — Dense grass coverage:
+
+Replace the current sparse grass with instanced grass tufts covering the playable island: use drei <Instances> (or THREE.InstancedMesh) with a low-poly grass tuft (either an existing grass mesh from my GLB assets, or 2–3 crossed planes with an alpha-tested grass texture / simple green blade geometry).
+Density: thousands of instances (start ~5,000–8,000), distributed with seeded randomness across the island's walkable radius, each with random rotation, slight scale variety (0.7–1.4), and small color variation between 2–3 green tones so it doesn't look uniform.
+Exclusion zones: no grass on the pathway/stepping stones, inside the temple floor area, or intersecting the puzzle pedestals — keep a small clear radius around each.
+Grass instances: castShadow OFF (thousands of shadow casters would kill FPS), receiveShadow off too; they should still look grounded via the terrain's own shadows.
+Optional polish if cheap: a subtle vertex-shader or per-instance sway animation; skip it if it costs noticeable FPS.
+
+Task 2 — Flowers from my GLB across the island:
+
+I've uploaded a flowers GLB into public/models/ — load it, extract the flower mesh(es), and scatter instanced copies across the whole island: roughly 300–600 instances, in natural-looking clusters/patches (clumped distribution, not a perfect uniform grid), mixed in among the grass.
+Same rules: seeded random positions, random rotation, scale variety, the same exclusion zones as grass, castShadow off. Size the flowers proportionate to the grass and character (small ground flowers, roughly knee-height or below).
+If the GLB contains multiple flower variants, use all variants distributed randomly for variety.
+
+Task 3 — Verify performance and coverage:
+Walk the island: grass should read as continuous natural coverage everywhere on walkable ground (no bald patches except the intentional exclusion zones), flowers appearing in pleasant clusters throughout. Check FPS before/after — if FPS drops noticeably below the current baseline, reduce grass instance count in steps of 1,000 until smooth, and report the final counts. Confirm the total added draw calls stay minimal (instancing = a handful of draw calls, not thousands). No console errors.
+Report: final grass count, flower count, FPS before/after, and the exclusion zones applied.

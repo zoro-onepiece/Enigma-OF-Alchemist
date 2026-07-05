@@ -6,11 +6,14 @@ import * as THREE from "three";
  *
  * No real grass GLB was provided (the two remaining uploaded packs turned
  * out to be a second tree species set and a potted-flower prop, already
- * used elsewhere), so this fills the bare dirt between the path/temple/
- * trees with lightweight procedural grass clumps instead of leaving it
- * empty. Each tuft is 3 thin, fanned cone "blades" merged into one
- * geometry and drawn via InstancedMesh so hundreds of tufts cost a single
- * draw call — purely decorative, no collision.
+ * used elsewhere), so this fills the walkable ground with lightweight
+ * procedural grass clumps instead of leaving it empty. Each tuft is 3 thin,
+ * fanned cone "blades" merged into one geometry and drawn via a single
+ * InstancedMesh, so even thousands of tufts cost exactly one draw call.
+ *
+ * Shadows are intentionally off on this mesh (both cast and receive) —
+ * thousands of shadow-casting instances would tank FPS, and the terrain's
+ * own shadow already grounds them visually.
  */
 export interface GrassTuftsProps {
   placements: {
@@ -59,6 +62,15 @@ function mergeGeometries(geoms: THREE.BufferGeometry[]) {
   return merged;
 }
 
+// Three discrete green tones (rather than a continuous random hue range)
+// so the field reads as a handful of natural grass varieties instead of
+// visual noise.
+const GRASS_PALETTE = [
+  new THREE.Color("#4f7a34"),
+  new THREE.Color("#5e8f3d"),
+  new THREE.Color("#3f6b2a"),
+];
+
 export default function GrassTufts({ placements }: GrassTuftsProps) {
   const geometry = useMemo(() => buildTuftGeometry(), []);
 
@@ -78,11 +90,11 @@ export default function GrassTufts({ placements }: GrassTuftsProps) {
       );
       matrices.push(matrix.clone());
 
-      // Subtle green variation so tufts don't look like uniform copies.
-      const hue = 0.28 + rand() * 0.06;
-      const sat = 0.45 + rand() * 0.2;
-      const light = 0.32 + rand() * 0.12;
-      colors.push(new THREE.Color().setHSL(hue, sat, light));
+      const base = GRASS_PALETTE[Math.floor(rand() * GRASS_PALETTE.length)];
+      const jittered = base
+        .clone()
+        .offsetHSL(0, 0, (rand() - 0.5) * 0.06);
+      colors.push(jittered);
     }
     return { matrices, colors };
   }, [placements]);
@@ -92,8 +104,9 @@ export default function GrassTufts({ placements }: GrassTuftsProps) {
   return (
     <instancedMesh
       args={[geometry, undefined, placements.length]}
-      castShadow
-      receiveShadow
+      castShadow={false}
+      receiveShadow={false}
+      frustumCulled={false}
       ref={(mesh) => {
         if (!mesh) return;
         instanceData.matrices.forEach((m, i) => mesh.setMatrixAt(i, m));
