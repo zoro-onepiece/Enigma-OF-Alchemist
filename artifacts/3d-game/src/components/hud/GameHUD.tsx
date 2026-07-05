@@ -11,6 +11,7 @@
 // pointer-events-auto is re-enabled only on interactive elements (wallet button).
 
 import React from "react";
+import { useSoundStore } from "../../store/soundStore";
 
 export default function GameHUD({
   health = 72,
@@ -22,6 +23,8 @@ export default function GameHUD({
 }) {
   const healthPct = Math.max(0, Math.min(100, (health / maxHealth) * 100));
   const lowHealth = healthPct <= 25;
+  const muted = useSoundStore((s) => s.muted);
+  const toggleMute = useSoundStore((s) => s.toggleMute);
 
   const shortAddr = walletAddress
     ? `${walletAddress.slice(0, 6)}…${walletAddress.slice(-4)}`
@@ -67,7 +70,14 @@ export default function GameHUD({
       </div>
 
       {/* ── TOP RIGHT: Web3 Connect Wallet (placeholder) ────────────── */}
-      <div className="absolute right-4 top-4">
+      <div className="absolute right-4 top-4 flex items-start gap-2">
+        <button
+          onClick={toggleMute}
+          title={muted ? "Unmute puzzle sounds" : "Mute puzzle sounds"}
+          className="pointer-events-auto flex h-[42px] w-[42px] items-center justify-center rounded-lg border-2 border-amber-500/80 bg-gradient-to-b from-stone-800/95 to-emerald-950/95 text-lg text-amber-100 shadow-[0_0_14px_rgba(217,119,6,0.35)] backdrop-blur-sm transition-all hover:scale-105 hover:border-amber-300 hover:shadow-[0_0_20px_rgba(251,191,36,0.55)] active:scale-95"
+        >
+          {muted ? "🔇" : "🔊"}
+        </button>
         <button
           onClick={onConnectWallet}
           className="pointer-events-auto group flex items-center gap-2 rounded-lg border-2 border-amber-500/80 bg-gradient-to-b from-stone-800/95 to-emerald-950/95 px-4 py-2 text-sm font-semibold tracking-wide text-amber-100 shadow-[0_0_14px_rgba(217,119,6,0.35)] backdrop-blur-sm transition-all hover:scale-105 hover:border-amber-300 hover:shadow-[0_0_20px_rgba(251,191,36,0.55)] active:scale-95"

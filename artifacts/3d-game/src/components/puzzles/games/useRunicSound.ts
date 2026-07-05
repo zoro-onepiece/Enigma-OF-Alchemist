@@ -6,6 +6,7 @@
  * as audio files, so no new assets or dependencies are required.
  */
 import { useCallback, useRef } from "react";
+import { useSoundStore } from "../../../store/soundStore";
 
 type ToneOptions = {
   frequency: number;
@@ -34,6 +35,7 @@ export function useRunicSound() {
 
   const playTone = useCallback(
     ({ frequency, duration, type = "sine", volume = 0.15, delay = 0 }: ToneOptions) => {
+      if (useSoundStore.getState().muted) return;
       const ctx = getContext();
       if (!ctx) return;
 

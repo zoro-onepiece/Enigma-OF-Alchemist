@@ -1,0 +1,20 @@
+Add 4 polish features to my R3F game. Do NOT modify Player.tsx movement/animation internals, playerKeyboardMap, GameHUD internals, or the puzzle mini-game logic. Work in order, verify each. Performance rule for everything below: no feature may drop FPS noticeably below the current baseline — if one does, reduce its counts/quality and report.
+Task 1 — Audio (ambient + SFX):
+
+I will upload sound files into public/audio/ (music.mp3, footstep.mp3, chime.mp3, victory.mp3, click.mp3). Build an audio module src/audio/sounds.ts that lazily loads them and exposes play functions. If a file is missing, fail silently (no crashes, just skip) — I may add files later.
+Background music: loop at low volume (~0.25), starting only after the first user interaction/click (browsers block autoplay). Add a small mute/unmute toggle button in a corner of the screen (outside GameHUD.jsx — a separate tiny component).
+Positional 3D audio via drei <PositionalAudio>: a soft magical hum on each unsolved GlowingPuzzle (stops when solved), so puzzles are audible when近 walking near them.
+SFX hooks: puzzle-open (click.mp3), correct action / win (chime.mp3), full victory overlay (victory.mp3). Footsteps only if there's a clean way to detect the character's moving state WITHOUT modifying Player.tsx — if not cleanly possible, skip footsteps and report why.
+
+Task 2 — Particles:
+
+Solved pedestals: a gentle fountain of small golden sparkles rising from each solved GlowingPuzzle (instanced points/sprites, ~50–100 particles each, additive blending).
+Ambient atmosphere: slow-drifting firefly/pollen motes across the island (~150–300 instanced particles, subtle, warm white/gold, gentle sine drift).
+Victory burst: when the victory overlay appears, a brief one-shot sparkle burst (CSS or canvas confetti inside the modal is fine).
+Implement with THREE.Points/InstancedMesh — no particle libraries.
+
+Task 3 — Final reward moment (4/4 essences):
+When puzzle.solved.size reaches 4, trigger a finale sequence: (a) a golden beam of light rises from the temple + the sky briefly shifts warmer, (b) a grand treasure chest (simple stylized geometry: dark wood box, gold trim, glowing seam — no new GLB needed) appears in front of the temple with sparkle particles, (c) walking near the chest shows "Press E to claim" and pressing E opens a full-screen overlay: "🏆 The Enigma is Solved! All Essences United" with total score, styled like the victory overlays but grander, plus a "Continue Exploring" button. (d) Call the existing onEssenceEarned-style hook pattern: add src/web3/onEnigmaComplete.ts exporting onEnigmaComplete() that console.logs "TODO: mint final NFT" and call it when the chest is claimed — my teammate will implement minting there. The chest remains in the world afterward (inert, glowing).
+Task 4 — Butterflies/birds:
+Add life to the island: 4–6 butterflies fluttering low among the flowers (two flapping wing planes per butterfly, simple sine flight paths at ~0.5–1.5 height, varied colors) and 2–3 birds circling high above the temple (simple dark silhouettes, large slow circles at y≈15–25). Pure procedural geometry + useFrame animation — no GLBs, no physics, castShadow off.
+Final verify: music starts after first click and the mute toggle works; puzzle hums are positional and stop when solved; chime/victory sounds fire at the right moments; solved pedestals sparkle; motes drift ambiently; solving all 4 triggers the beam→chest→E-claim→finale overlay flow and logs onEnigmaComplete; butterflies among flowers and birds overhead animate smoothly; FPS at baseline; no console errors; missing audio files cause no errors. Report per task.

@@ -8,6 +8,7 @@
  * types (flip, match, wrong, lose) needed by the other games.
  */
 import { useCallback, useRef } from "react";
+import { useSoundStore } from "../../store/soundStore";
 
 type ToneOptions = {
   frequency: number;
@@ -36,6 +37,7 @@ export function usePuzzleSound() {
 
   const playTone = useCallback(
     ({ frequency, duration, type = "sine", volume = 0.15, delay = 0 }: ToneOptions) => {
+      if (useSoundStore.getState().muted) return;
       const ctx = getContext();
       if (!ctx) return;
 
