@@ -28,7 +28,15 @@ function checkExists(path: string): Promise<boolean> {
   let cached = existsCache.get(path);
   if (!cached) {
     cached = fetch(path, { method: "HEAD" })
-      .then((res) => res.ok)
+      .then((res) => {
+        if (!res.ok) return false;
+        // Dev servers (Vite's SPA fallback in particular) can return a 200
+        // with index.html for ANY unmatched path, including a nonexistent
+        // /audio/*.mp3 — so `res.ok` alone is a false positive. Require an
+        // audio content-type too, otherwise treat it as missing.
+        const contentType = res.headers.get("content-type") ?? "";
+        return contentType.startsWith("audio/");
+      })
       .catch(() => false);
     existsCache.set(path, cached);
   }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { Component, ReactNode, useEffect, useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
 import { Html, PositionalAudio } from "@react-three/drei";
 import * as THREE from "three";
@@ -8,6 +8,23 @@ import { useSoundStore } from "../../../store/soundStore";
 import SparkleFountain from "../effects/SparkleFountain";
 
 const HUM_PATH = "/audio/hum.mp3";
+
+/** Defense in depth: even after the existence+content-type check in
+ * audioFileExists(), a genuinely corrupt/unsupported audio file could still
+ * fail to decode inside drei's <PositionalAudio> (which throws inside
+ * Suspense). Without a boundary that error propagates all the way up and
+ * takes down the whole <Canvas>. This swallows it and just drops the hum —
+ * silence, not a crash. */
+class AudioErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
+  state = { hasError: false };
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  componentDidCatch() {}
+  render() {
+    return this.state.hasError ? null : this.props.children;
+  }
+}
 
 /** Renders drei's <PositionalAudio> only once we've confirmed hum.mp3
  * actually exists — avoids a console 404/decode error before the user has
@@ -164,7 +181,11 @@ export default function GlowingPuzzle({
 
       {/* Soft magical hum while unsolved — stops as soon as the puzzle is
           solved since this whole block only mounts when !isSolved. */}
-      {!isSolved && <PuzzleHum muted={soundMuted} />}
+      {!isSolved && (
+        <AudioErrorBoundary>
+          <PuzzleHum muted={soundMuted} />
+        </AudioErrorBoundary>
+      )}
 
       {/* Gentle golden sparkle fountain rising from a solved pedestal. */}
       {isSolved && (
