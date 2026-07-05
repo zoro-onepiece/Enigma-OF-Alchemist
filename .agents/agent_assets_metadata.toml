@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "x3bY1T48uRH66gshlhIIO"
+uri = "file://.local/outputs/Enigma-OF-Alchemist.pptx"
+type = "slides"
+title = "Enigma-OF-Alchemist.pptx"

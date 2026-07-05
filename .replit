@@ -26,3 +26,11 @@ VITE_MAGIC_PUBLISHABLE_KEY = "pk_live_1EF73C1D3DCE70C2"
 
 [nix]
 packages = ["tree"]
+
+[[ports]]
+localPort = 24163
+externalPort = 3000
+
+[[ports]]
+localPort = 24982
+externalPort = 80
