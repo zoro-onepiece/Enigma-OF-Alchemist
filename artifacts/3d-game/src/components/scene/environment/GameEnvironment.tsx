@@ -2,10 +2,8 @@ import { useMemo } from "react";
 import * as THREE from "three";
 import GlbForestTree from "./GlbForestTree";
 import GlbAutumnTree from "./GlbAutumnTree";
-// Task 1: flower rendering removed entirely (GlbFlowerPot / FlowerField
-// components + their GLB preloads are no longer imported or mounted — the
-// component files themselves are left in place unused in case we revisit
-// flowers later). Grass/trees/butterflies are untouched.
+import GlbFlowerPot from "./GlbFlowerPot";
+import FlowerField from "./FlowerField";
 import DistantScenery from "./DistantScenery";
 import Pathway from "./Pathway";
 import GlowingPuzzle from "./GlowingPuzzle";
@@ -271,13 +269,112 @@ export default function GameEnvironment() {
     }));
   }, []);
 
-  // Task 1: the potted-flower (flowerPots) and wildflower-scatter
-  // (flowerField) useMemo generators — and their <GlbFlowerPot>/
-  // <FlowerField> render calls below — have been removed entirely so no
-  // flower GLB is loaded, preloaded, or mounted anywhere in the world.
-  // flowerClusterCenters below is kept as-is: it only produces anchor
-  // points used by Wildlife/butterflies, not flower placements, so
-  // butterfly behavior is unaffected by removing the flowers themselves.
+  // Small potted-flower accents lining the pathway and ringing the temple
+  // base — pure ground-cover decoration (no collision), so they're allowed
+  // to sit closer to the path/temple than the trees do.
+  const flowerPots = useMemo(() => {
+    const rand = mulberry32(5050);
+    const pots: {
+      position: [number, number, number];
+      rotationY: number;
+      scale: number;
+    }[] = [];
+
+    // Lining both sides of the path, offset just outside the walkable
+    // stones (the path corridor is roughly |x| < 2.5 around each waypoint).
+    // Task 4: sink every pot -0.02 below y=0 so the base is embedded in
+    // the ground with no gap, and the 0.75-1.15 scale jitter (was
+    // 0.8-1.4) keeps every instance within the ~0.3-0.5 unit spec range
+    // after GlbFlowerPot's own TARGET_HEIGHT=0.42 base scale.
+    for (const [wx, wz] of PATH_WAYPOINTS) {
+      for (const side of [-1, 1]) {
+        if (rand() < 0.35) continue; // skip some for a natural, uneven line
+        const offsetX = side * (2.8 + rand() * 1.6);
+        pots.push({
+          position: [wx + offsetX, -0.02, wz + (rand() - 0.5) * 3],
+          rotationY: rand() * Math.PI * 2,
+          scale: 0.75 + rand() * 0.4,
+        });
+      }
+    }
+
+    // A loose ring of pots around the temple's base.
+    const templeRingCount = 8;
+    for (let i = 0; i < templeRingCount; i++) {
+      const angle = (i / templeRingCount) * Math.PI * 2;
+      const r = 8 + rand() * 2;
+      pots.push({
+        position: [
+          TEMPLE_POSITION[0] + Math.cos(angle) * r,
+          -0.02,
+          TEMPLE_POSITION[2] + Math.sin(angle) * r,
+        ],
+        rotationY: rand() * Math.PI * 2,
+        scale: 0.75 + rand() * 0.4,
+      });
+    }
+
+    return pots;
+  }, []);
+
+  // Clustered wildflower scatter (300-600 instances) across the walkable
+  // ground. Rather than uniform rejection-sampling across the whole ground
+  // (which reads as an even sprinkle), we pick a handful of cluster
+  // centers and scatter flowers in a tight radius around each — natural
+  // clumped patches, same as real wildflowers growing where seeds fell.
+  const flowerField = useMemo(() => {
+    const rand = mulberry32(7070);
+    const flowers: {
+      position: [number, number, number];
+      rotationY: number;
+      scale: number;
+    }[] = [];
+
+    const half = (GROUND_SIZE - 2) / 2;
+    const zOffset = -5 * ISLAND_SCALE;
+    // Scaled up linearly with the island (not by area) so the bigger garden
+    // still reads as densely flowered without ballooning instance count.
+    const targetCount = Math.round(450 * ISLAND_SCALE);
+    const clusterCount = Math.round(26 * ISLAND_SCALE);
+    const perCluster = Math.ceil(targetCount / clusterCount);
+    const clusterRadius = 2.2; // physical patch size stays the same
+
+    let attempts = 0;
+    while (flowers.length < targetCount && attempts < clusterCount * 200) {
+      attempts++;
+
+      const clusterIndex = Math.floor(flowers.length / perCluster);
+      if (clusterIndex >= clusterCount) break;
+
+      // Rejection-sample a cluster center against the exclusion zones.
+      let cx = 0;
+      let cz = 0;
+      let found = false;
+      for (let tries = 0; tries < 40; tries++) {
+        cx = (rand() - 0.5) * half * 2;
+        cz = (rand() - 0.5) * half * 2 + zOffset;
+        if (isClearForGroundCover(cx, cz)) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) continue;
+
+      const angle = rand() * Math.PI * 2;
+      const r = rand() * clusterRadius;
+      const x = cx + Math.cos(angle) * r;
+      const z = cz + Math.sin(angle) * r;
+      if (!isClearForGroundCover(x, z)) continue;
+
+      flowers.push({
+        position: [x, 0, z],
+        rotationY: rand() * Math.PI * 2,
+        scale: 0.8 + rand() * 0.6,
+      });
+    }
+
+    return flowers;
+  }, []);
 
   // A handful of anchor points near flower patches for butterflies to
   // flutter around (Task 4) — derived independently with the same seeded
@@ -347,10 +444,20 @@ export default function GameEnvironment() {
       {/* Temple at the far end of the path */}
       <JapaneseTemple position={TEMPLE_POSITION} />
 
-      {/* Task 1: flowers removed — the potted-flower ground cover and
-          wildflower scatter that used to render here (<GlbFlowerPot> /
-          <FlowerField>) have been taken out of the render tree entirely.
-          Grass, trees, and butterflies below are unaffected. */}
+      {/* Potted-flower ground cover — lines the pathway and rings the
+          temple base. Purely decorative (no collision). */}
+      {flowerPots.map((pot, i) => (
+        <GlbFlowerPot
+          key={`flower-pot-${i}`}
+          position={pot.position}
+          rotationY={pot.rotationY}
+          scale={pot.scale}
+        />
+      ))}
+
+      {/* Clustered wildflower scatter across the walkable ground — see
+          FlowerField.tsx. ~6 instanced draw calls total, shadows off. */}
+      <FlowerField placements={flowerField} />
 
       {/* Autumn tree grove — artist-made GLB species (replaces the old
           fully-procedural CherryBlossomTree / QuantumTree / GreenLeafTree) */}

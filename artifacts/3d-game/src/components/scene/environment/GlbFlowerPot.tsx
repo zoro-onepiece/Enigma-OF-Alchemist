@@ -90,6 +90,4 @@ export default function GlbFlowerPot({
   );
 }
 
-// Task 1: preload removed — this component is no longer mounted anywhere,
-// so preloading its GLB would load an asset that's never used. Re-add
-// `useGLTF.preload(MODEL_PATH);` here if flower pots are reintroduced.
+useGLTF.preload(MODEL_PATH);
