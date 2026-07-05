@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import * as THREE from "three";
 import GlbForestTree from "./GlbForestTree";
 import GlbAutumnTree from "./GlbAutumnTree";
+import GlbFlowerPot from "./GlbFlowerPot";
 import DistantScenery from "./DistantScenery";
 import Pathway from "./Pathway";
 import GlowingPuzzle from "./GlowingPuzzle";
@@ -140,6 +141,50 @@ export default function GameEnvironment() {
     ];
   }, []);
 
+  // Small potted-flower accents lining the pathway and ringing the temple
+  // base — pure ground-cover decoration (no collision), so they're allowed
+  // to sit closer to the path/temple than the trees do.
+  const flowerPots = useMemo(() => {
+    const rand = mulberry32(5050);
+    const pots: {
+      position: [number, number, number];
+      rotationY: number;
+      scale: number;
+    }[] = [];
+
+    // Lining both sides of the path, offset just outside the walkable
+    // stones (the path corridor is roughly |x| < 2.5 around each waypoint).
+    for (const [wx, wz] of PATH_WAYPOINTS) {
+      for (const side of [-1, 1]) {
+        if (rand() < 0.35) continue; // skip some for a natural, uneven line
+        const offsetX = side * (2.8 + rand() * 1.6);
+        pots.push({
+          position: [wx + offsetX, 0, wz + (rand() - 0.5) * 3],
+          rotationY: rand() * Math.PI * 2,
+          scale: 0.8 + rand() * 0.6,
+        });
+      }
+    }
+
+    // A loose ring of pots around the temple's base.
+    const templeRingCount = 8;
+    for (let i = 0; i < templeRingCount; i++) {
+      const angle = (i / templeRingCount) * Math.PI * 2;
+      const r = 8 + rand() * 2;
+      pots.push({
+        position: [
+          TEMPLE_POSITION[0] + Math.cos(angle) * r,
+          0,
+          TEMPLE_POSITION[2] + Math.sin(angle) * r,
+        ],
+        rotationY: rand() * Math.PI * 2,
+        scale: 0.85 + rand() * 0.5,
+      });
+    }
+
+    return pots;
+  }, []);
+
   return (
     <>
       {/* Fog now lives solely in Scene.tsx (single source of truth, matched
@@ -164,6 +209,17 @@ export default function GameEnvironment() {
 
       {/* Temple at the far end of the path */}
       <JapaneseTemple position={TEMPLE_POSITION} />
+
+      {/* Potted-flower ground cover — lines the pathway and rings the
+          temple base. Purely decorative (no collision). */}
+      {flowerPots.map((pot, i) => (
+        <GlbFlowerPot
+          key={`flower-pot-${i}`}
+          position={pot.position}
+          rotationY={pot.rotationY}
+          scale={pot.scale}
+        />
+      ))}
 
       {/* Autumn tree grove — artist-made GLB species (replaces the old
           fully-procedural CherryBlossomTree / QuantumTree / GreenLeafTree) */}
