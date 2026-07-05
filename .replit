@@ -22,7 +22,7 @@ timeoutMs = 20000
 [userenv]
 
 [userenv.shared]
-VITE_MAGIC_PUBLISHABLE_KEY = "pk_live_30AFE3EEEDD774DF"
+VITE_MAGIC_PUBLISHABLE_KEY = "pk_live_1EF73C1D3DCE70C2"
 
 [nix]
 packages = ["tree"]
