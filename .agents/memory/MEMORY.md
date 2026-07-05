@@ -6,3 +6,4 @@
 - [Multi-material GLB instancing](multi-material-glb-instancing.md) — instance a multi-part GLB prop as one InstancedMesh per part sharing one transform array, not per-instance groups.
 - [R3F/drei prop gotchas](r3f-drei-prop-gotchas.md) — bufferAttribute needs args=[array,itemSize] not count/array/itemSize; PositionalAudio has no volume prop, use ref.setVolume().
 - [Magic.link SDK hangs on bad key](magic-link-oauth-hang.md) — Magic SDK auth calls can hang forever (not error) with an invalid publishable key; always wrap with a timeout.
+- [Legacy GLB specular-glossiness materials](glb-legacy-specular-glossiness.md) — three.js's GLTFLoader silently ignores KHR_materials_pbrSpecularGlossiness, leaving meshes untextured; patch the GLB to use pbrMetallicRoughness instead.

@@ -11,6 +11,7 @@ import JapaneseTemple from "./JapaneseTemple";
 import TempleBeam from "./TempleBeam";
 import TreasureChest from "./TreasureChest";
 import Wildlife from "./Wildlife";
+import GlbButterflies from "./GlbButterfly";
 import FootstepAudio from "./FootstepAudio";
 import AmbientMotes from "../effects/AmbientMotes";
 import { useGameStore } from "../../../store/gameStore";
@@ -474,8 +475,13 @@ export default function GameEnvironment() {
       {/* Task 2: ambient drifting motes across the island. */}
       <AmbientMotes />
 
-      {/* Task 4: butterflies among the flower clusters + circling birds. */}
+      {/* Task 4: circling birds (procedural). Butterflies are now the real
+          GLB model below instead of Wildlife's old procedural planes. */}
       <Wildlife flowerCenters={flowerClusterCenters} templePosition={TEMPLE_POSITION} />
+
+      {/* GLB butterflies scattered across the flower clusters, replacing
+          the old procedural plane-wing butterflies. */}
+      <GlbButterflies flowerCenters={flowerClusterCenters} count={15} />
 
       {/* Task 3: finale beam + treasure chest, only once all 4 essences are
           collected. The chest stays visible (and interactable) even after

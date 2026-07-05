@@ -1,12 +1,17 @@
 /**
  * Wildlife (Task 4)
  *
- * Pure procedural, no-GLB, no-physics ambient life: a handful of low
- * fluttering butterflies among the flowers, and a couple of birds
+ * Pure procedural, no-GLB, no-physics ambient life: a couple of birds
  * circling high above the temple. Everything animates via useFrame sine
  * paths only — no colliders, no shadows (castShadow off per the task),
  * kept purely decorative so it can never interfere with Player/puzzle
  * logic.
+ *
+ * The procedural plane-wing `Butterfly` component below is no longer
+ * rendered — butterflies now come from the real GLB model in
+ * GlbButterfly.tsx (see GameEnvironment.tsx). The component/types here are
+ * kept in the file (unused) rather than deleted, per instruction, in case
+ * they're needed again as a fallback.
  */
 import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
@@ -163,9 +168,6 @@ export default function Wildlife({ flowerCenters, templePosition }: WildlifeProp
 
   return (
     <>
-      {butterflies.map((def, i) => (
-        <Butterfly key={`butterfly-${i}`} def={def} />
-      ))}
       {birds.map((def, i) => (
         <Bird key={`bird-${i}`} def={def} />
       ))}
