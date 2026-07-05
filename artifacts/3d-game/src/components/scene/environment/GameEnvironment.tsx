@@ -3,7 +3,6 @@ import * as THREE from "three";
 import GlbForestTree from "./GlbForestTree";
 import GlbAutumnTree from "./GlbAutumnTree";
 import GlbFlowerPot from "./GlbFlowerPot";
-import GrassTufts from "./GrassTufts";
 import FlowerField from "./FlowerField";
 import DistantScenery from "./DistantScenery";
 import Pathway from "./Pathway";
@@ -209,48 +208,8 @@ export default function GameEnvironment() {
     return pots;
   }, []);
 
-  // Dense instanced grass tufts covering the *entire* walkable ground (see
-  // GrassTufts.tsx — no real grass GLB was provided). A jittered grid
-  // (rather than pure rejection-sampling) gives even, gap-free coverage
-  // everywhere except the pathway/temple/puzzle-pedestal exclusion zones,
-  // while still reading as natural thanks to per-cell position/rotation/
-  // scale jitter. Single InstancedMesh draw call regardless of count.
-  //
-  // Spacing of 1.0 over the ~90x90 ground, minus exclusion zones, lands
-  // in the ~6,000-6,500 range — comfortably inside the requested
-  // 5,000-8,000 instance budget. See Task 3 report for measured FPS.
-  const GRASS_SPACING = 1.0;
-
-  const grassTufts = useMemo(() => {
-    const rand = mulberry32(6060);
-    const tufts: {
-      position: [number, number, number];
-      rotationY: number;
-      scale: number;
-    }[] = [];
-
-    const half = (GROUND_SIZE - 2) / 2;
-    const zOffset = -5;
-
-    for (let gx = -half; gx <= half; gx += GRASS_SPACING) {
-      for (let gz = -half; gz <= half; gz += GRASS_SPACING) {
-        const x = gx + (rand() - 0.5) * GRASS_SPACING * 0.8;
-        const z = gz + zOffset + (rand() - 0.5) * GRASS_SPACING * 0.8;
-        if (!isClearForGroundCover(x, z)) continue;
-        tufts.push({
-          position: [x, 0, z],
-          rotationY: rand() * Math.PI * 2,
-          // Slight scale variety (0.7-1.4) per spec.
-          scale: 0.7 + rand() * 0.7,
-        });
-      }
-    }
-
-    return tufts;
-  }, []);
-
-  // Clustered wildflower scatter (300-600 instances) mixed in among the
-  // grass. Rather than uniform rejection-sampling across the whole ground
+  // Clustered wildflower scatter (300-600 instances) across the walkable
+  // ground. Rather than uniform rejection-sampling across the whole ground
   // (which reads as an even sprinkle), we pick a handful of cluster
   // centers and scatter flowers in a tight radius around each — natural
   // clumped patches, same as real wildflowers growing where seeds fell.
@@ -342,12 +301,7 @@ export default function GameEnvironment() {
         />
       ))}
 
-      {/* Dense instanced grass tufts covering the walkable ground — see
-          GrassTufts.tsx. Single instanced draw call, purely decorative,
-          shadows off. */}
-      <GrassTufts placements={grassTufts} />
-
-      {/* Clustered wildflower scatter mixed in among the grass — see
+      {/* Clustered wildflower scatter across the walkable ground — see
           FlowerField.tsx. ~6 instanced draw calls total, shadows off. */}
       <FlowerField placements={flowerField} />
 
