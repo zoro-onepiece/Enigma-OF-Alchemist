@@ -1,0 +1,111 @@
+// src/lib/magic.js
+import { Magic } from "magic-sdk";
+import { OAuthExtension } from "@magic-ext/oauth2";
+
+const ARBITRUM_SEPOLIA = {
+  rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",
+  chainId: 421614,
+};
+
+export const magic = new Magic(import.meta.env.VITE_MAGIC_PUBLISHABLE_KEY, {
+  network: ARBITRUM_SEPOLIA,
+  extensions: [new OAuthExtension()],
+});
+
+export async function loginWithGoogle() {
+  await magic.oauth2.loginWithRedirect({
+    provider: "google",
+    redirectURI: window.location.origin,
+  });
+}
+
+let redirectPromise = null;
+
+export function handleOAuthRedirect() {
+  if (redirectPromise) return redirectPromise;
+
+  redirectPromise = (async () => {
+    const params = new URLSearchParams(window.location.search);
+    const hasMagicParams = params.has("magic_oauth_request_id") || 
+                          params.has("magic_credential") || 
+                          params.has("provider") ||
+                          (params.has("state") && params.has("code")) ||
+                          params.has("code");
+
+    if (!hasMagicParams) {
+      return null;
+    }
+
+    try {
+      console.log("[magic] Processing OAuth redirect...");
+      const result = await magic.oauth2.getRedirectResult();
+      
+      // Clear URL parameters
+      window.history.replaceState({}, "", window.location.pathname);
+      
+      // 1. Try to get address from the result
+      let address = result?.magic?.userMetadata?.publicAddress ?? 
+                    result?.oauth?.userMetadata?.publicAddress ?? 
+                    null;
+
+      console.log("[magic] Raw result address:", address);
+
+      // 2. If address is null, the browser hasn't synced the session yet.
+      // We loop and check for the session 3 times to beat the race condition.
+      if (!address) {
+        console.warn("[magic] Address null. Running rescue loop...");
+        for (let i = 0; i < 5; i++) {
+          await new Promise(r => setTimeout(r, 300)); // Wait 300ms
+          try {
+            const loggedIn = await magic.user.isLoggedIn();
+            if (loggedIn) {
+              const info = await magic.user.getInfo();
+              address = info?.publicAddress ?? null;
+              if (address) {
+                console.log(`[magic] Rescue successful after ${i+1} attempts. Address found:`, address);
+                break;
+              }
+            }
+          } catch (e) {
+            // ignore, try again
+          }
+        }
+      }
+
+      return address;
+
+    } catch (err) {
+      console.error("[magic] getRedirectResult failed:", err);
+      // If getRedirectResult throws, try the rescue loop anyway (sometimes it throws an error but the session exists!)
+      try {
+        const loggedIn = await magic.user.isLoggedIn();
+        if (loggedIn) {
+          const info = await magic.user.getInfo();
+          return info?.publicAddress ?? null;
+        }
+      } catch {}
+      return null;
+    }
+  })();
+
+  return redirectPromise;
+}
+
+export async function getExistingSession() {
+  try {
+    const loggedIn = await magic.user.isLoggedIn();
+    if (!loggedIn) return null;
+    const info = await magic.user.getInfo();
+    return info?.publicAddress ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function logout() {
+  try {
+    await magic.user.logout();
+  } catch (err) {
+    console.error("Logout failed:", err);
+  }
+}

@@ -54,22 +54,54 @@ export function handleOAuthRedirect() {
       const result = await magic.oauth2.getRedirectResult();
       console.log("[DEBUG] handleOAuthRedirect: getRedirectResult() raw result =", result);
       window.history.replaceState({}, "", window.location.pathname);
-      const addr = result?.magic?.userMetadata?.publicAddress ?? null;
+
+      // Address can land under either `magic` or `oauth`, depending on
+      // provider/SDK version — check both before falling back to the
+      // rescue loop.
+      let addr =
+        result?.magic?.userMetadata?.publicAddress ??
+        result?.oauth?.userMetadata?.publicAddress ??
+        null;
       console.log("[magic] OAuth redirect processed, address:", addr);
+
+      // The browser may not have synced the Magic session yet even
+      // though getRedirectResult() succeeded. Poll isLoggedIn/getInfo a
+      // few times before giving up, instead of a single check.
+      if (!addr) {
+        console.warn("[magic] address missing from result, running rescue loop...");
+        for (let i = 0; i < 5 && !addr; i++) {
+          await new Promise((r) => setTimeout(r, 300));
+          try {
+            if (await magic.user.isLoggedIn()) {
+              const info = await magic.user.getInfo();
+              addr = info?.publicAddress ?? null;
+              if (addr) {
+                console.log(`[magic] rescue succeeded after ${i + 1} attempt(s):`, addr);
+              }
+            }
+          } catch (rescueErr) {
+            console.error("[DEBUG] rescue loop attempt failed:", rescueErr);
+          }
+        }
+      }
+
       return addr;
     } catch (err) {
       console.error("[magic] getRedirectResult failed:", err);
       console.error("[DEBUG] getRedirectResult error name/message/stack:", err?.name, err?.message, err?.stack);
       // Rescue path: the session may still exist even if result
-      // processing hiccuped — check before giving up.
-      try {
-        if (await magic.user.isLoggedIn()) {
-          const info = await magic.user.getInfo();
-          console.log("[magic] rescued existing session:", info?.publicAddress);
-          return info?.publicAddress ?? null;
+      // processing threw — poll before giving up.
+      for (let i = 0; i < 5; i++) {
+        try {
+          if (await magic.user.isLoggedIn()) {
+            const info = await magic.user.getInfo();
+            console.log("[magic] rescued existing session:", info?.publicAddress);
+            if (info?.publicAddress) return info.publicAddress;
+          }
+        } catch (rescueErr) {
+          console.error("[DEBUG] rescue path isLoggedIn/getInfo failed:", rescueErr);
         }
-      } catch (rescueErr) {
-        console.error("[DEBUG] rescue path isLoggedIn/getInfo failed:", rescueErr);
+        await new Promise((r) => setTimeout(r, 300));
       }
       return null;
     }
