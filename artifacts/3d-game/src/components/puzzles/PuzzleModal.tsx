@@ -17,7 +17,7 @@
 import { useState, type ReactElement } from "react";
 import RuneMemoryGame from "./RuneMemoryGame";
 import AlchemyMatch3Game from "./AlchemyMatch3Game";
-import RunicLights from "./games/RunicLights";
+import ElementalSudoku from "./games/ElementalSudoku";
 import SigilPairsGame from "./SigilPairsGame";
 
 interface PuzzleModalProps {
@@ -47,9 +47,9 @@ const PUZZLE_CONFIG: Record<string, PuzzleConfig> = {
     Component: AlchemyMatch3Game,
   },
   "puzzle-3": {
-    name: "Runic Lights",
-    subtitle: "Awaken the Grid",
-    Component: RunicLights,
+    name: "Elemental Sudoku",
+    subtitle: "Balance the Elements",
+    Component: ElementalSudoku,
   },
   "puzzle-4": {
     name: "Sigil Pairs",

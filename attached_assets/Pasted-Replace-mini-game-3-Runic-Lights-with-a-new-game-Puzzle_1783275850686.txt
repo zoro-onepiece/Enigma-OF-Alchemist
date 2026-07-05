@@ -1,0 +1,12 @@
+Replace mini-game 3 (Runic Lights) with a new game. Puzzle area 3 must now open this game; remove the Runic Lights mapping (keep its file). Do NOT touch the other 3 mini-games, the PuzzleModal framework, store/victory flow, onEssenceEarned hook, Player.tsx, or GameHUD internals.
+New Game 3 — "Elemental Sudoku" (4×4): Create src/components/puzzles/games/ElementalSudoku.tsx:
+
+A 4×4 sudoku grid using 4 alchemical element symbols instead of numbers: 🜁 (air), 🜂 (fire), 🜄 (water), 🜃 (earth) — each styled with a distinct color (pale violet, red, blue, green). Rules: each symbol appears exactly once per row, per column, and per 2×2 box. Draw clear thicker borders around the four 2×2 boxes.
+Board generation must guarantee a valid, solvable puzzle: first generate a complete valid 4×4 solution (start from a base valid grid and apply random row/column swaps within bands and symbol permutations), then remove 8–10 cells to create the puzzle. Given cells are locked (visually distinct — carved/stone look) and cannot be changed.
+Input: a symbol palette of the 4 elements below the grid; player selects a symbol then clicks an empty cell to place it (click again or an eraser button to clear). Placing a symbol that immediately conflicts with the same row/column/box highlights the conflict cells briefly in red (soft guidance, still allowed to place — or auto-reject, whichever is simpler and bug-free; pick one and be consistent).
+Win detection: when all 16 cells are filled AND every row/column/box is valid → trigger the SAME victory flow as the other games: golden "✨ Essence Conjured!" overlay → Continue → solvePuzzle(activeId) → phase='exploring'.
+Include a "Reset" button (clears player-placed cells, keeps the same givens) and a "New Board" button (fresh generated puzzle). No move limit, no timer.
+Fantasy styling consistent with the other games: dark stone grid, amber highlights, glowing symbols.
+
+Verify: walk to puzzle area 3 → E → Elemental Sudoku opens (not Runic Lights); givens are locked; conflicts are indicated; every generated board is solvable; completing it correctly grants the essence/score exactly like the other games; the other 3 areas still open their original games; closing (X) mid-game leaves it unsolved and replayable; no console errors.
+Report what was removed and what was added.
