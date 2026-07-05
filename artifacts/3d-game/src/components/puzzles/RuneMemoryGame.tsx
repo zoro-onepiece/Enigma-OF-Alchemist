@@ -7,6 +7,7 @@
  * click shakes red and replays the same sequence — retries are unlimited.
  */
 import { useEffect, useRef, useState } from "react";
+import { usePuzzleSound } from "./usePuzzleSound";
 
 interface RuneMemoryGameProps {
   onWin: () => void;
@@ -36,6 +37,7 @@ export default function RuneMemoryGame({ onWin }: RuneMemoryGameProps) {
   const [flashIndex, setFlashIndex] = useState<number | null>(null);
   const [userInput, setUserInput] = useState<number[]>([]);
   const timeouts = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const { playClick, playWrong, playWin } = usePuzzleSound();
 
   const clearTimers = () => {
     timeouts.current.forEach(clearTimeout);
@@ -47,7 +49,12 @@ export default function RuneMemoryGame({ onWin }: RuneMemoryGameProps) {
     setUserInput([]);
     setUiPhase("flashing");
     seq.forEach((runeId, i) => {
-      timeouts.current.push(setTimeout(() => setFlashIndex(runeId), i * FLASH_INTERVAL_MS));
+      timeouts.current.push(
+        setTimeout(() => {
+          setFlashIndex(runeId);
+          playClick(runeId);
+        }, i * FLASH_INTERVAL_MS),
+      );
       timeouts.current.push(
         setTimeout(() => setFlashIndex(null), i * FLASH_INTERVAL_MS + FLASH_INTERVAL_MS * 0.6),
       );
@@ -68,17 +75,20 @@ export default function RuneMemoryGame({ onWin }: RuneMemoryGameProps) {
     const stepIndex = nextInput.length - 1;
 
     if (sequence[stepIndex] !== runeId) {
+      playWrong();
       setUiPhase("wrong");
       clearTimers();
       timeouts.current.push(setTimeout(() => playFlashSequence(sequence), 900));
       return;
     }
 
+    playClick(runeId);
     setUserInput(nextInput);
 
     if (nextInput.length === sequence.length) {
       clearTimers();
       if (round >= TOTAL_ROUNDS) {
+        playWin();
         onWin();
         return;
       }

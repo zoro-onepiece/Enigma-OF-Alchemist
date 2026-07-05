@@ -7,6 +7,7 @@
  * going over the limit reshuffles the board for a fresh retry.
  */
 import { useState } from "react";
+import { usePuzzleSound } from "./usePuzzleSound";
 
 interface SigilPairsGameProps {
   onWin: () => void;
@@ -40,6 +41,7 @@ export default function SigilPairsGame({ onWin }: SigilPairsGameProps) {
   const [flippedIds, setFlippedIds] = useState<number[]>([]);
   const [flipsUsed, setFlipsUsed] = useState(0);
   const [busy, setBusy] = useState(false);
+  const { playFlip, playMatch, playWrong, playWin } = usePuzzleSound();
 
   const reshuffle = () => {
     setCards(makeDeck());
@@ -54,6 +56,7 @@ export default function SigilPairsGame({ onWin }: SigilPairsGameProps) {
     if (!card || card.matched || flippedIds.includes(id)) return;
     if (flippedIds.length === 2) return;
 
+    playFlip();
     const nextFlips = flipsUsed + 1;
     setFlipsUsed(nextFlips);
 
@@ -67,6 +70,7 @@ export default function SigilPairsGame({ onWin }: SigilPairsGameProps) {
       const second = cards.find((c) => c.id === secondId)!;
 
       if (first.symbol === second.symbol) {
+        playMatch();
         setTimeout(() => {
           setCards((prev) =>
             prev.map((c) => (c.id === firstId || c.id === secondId ? { ...c, matched: true } : c)),
@@ -78,12 +82,16 @@ export default function SigilPairsGame({ onWin }: SigilPairsGameProps) {
               (c) => c.matched || c.id === firstId || c.id === secondId,
             );
             if (allMatched) {
-              setTimeout(() => onWin(), 200);
+              setTimeout(() => {
+                playWin();
+                onWin();
+              }, 200);
             }
             return prev;
           });
         }, 350);
       } else {
+        playWrong();
         setTimeout(() => {
           setFlippedIds([]);
           setBusy(false);

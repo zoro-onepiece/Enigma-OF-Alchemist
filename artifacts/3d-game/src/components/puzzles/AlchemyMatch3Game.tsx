@@ -10,6 +10,7 @@
  * unlimited attempts).
  */
 import { useState } from "react";
+import { usePuzzleSound } from "./usePuzzleSound";
 
 interface AlchemyMatch3GameProps {
   onWin: () => void;
@@ -112,6 +113,7 @@ export default function AlchemyMatch3Game({ onWin }: AlchemyMatch3GameProps) {
   const [status, setStatus] = useState<"playing" | "lost">("playing");
   const [invalidFlash, setInvalidFlash] = useState<{ r: number; c: number } | null>(null);
   const [resolving, setResolving] = useState(false);
+  const { playClick, playMatch, playWrong, playWin, playLose } = usePuzzleSound();
 
   const resetBoard = () => {
     setGrid(makeInitialGrid());
@@ -137,13 +139,16 @@ export default function AlchemyMatch3Game({ onWin }: AlchemyMatch3GameProps) {
         setCleared(clearedTotal);
         setResolving(false);
         if (clearedTotal >= CLEAR_TARGET) {
+          playWin();
           onWin();
         } else if (movesRemainingAfterThisMove <= 0) {
+          playLose();
           setStatus("lost");
         }
         return;
       }
       clearedTotal += matches.size;
+      playMatch();
       workingGrid = applyGravityAndRefill(workingGrid, matches);
       setGrid(workingGrid);
       setCleared(clearedTotal);
@@ -158,6 +163,7 @@ export default function AlchemyMatch3Game({ onWin }: AlchemyMatch3GameProps) {
     if (status !== "playing" || resolving) return;
 
     if (!selected) {
+      playClick();
       setSelected({ r, c });
       return;
     }
@@ -168,6 +174,7 @@ export default function AlchemyMatch3Game({ onWin }: AlchemyMatch3GameProps) {
     }
 
     if (!isAdjacent(selected, { r, c })) {
+      playClick();
       setSelected({ r, c });
       return;
     }
@@ -182,6 +189,7 @@ export default function AlchemyMatch3Game({ onWin }: AlchemyMatch3GameProps) {
     setSelected(null);
 
     if (matches.size === 0) {
+      playWrong();
       setInvalidFlash({ r, c });
       setTimeout(() => setInvalidFlash(null), 250);
       return;
