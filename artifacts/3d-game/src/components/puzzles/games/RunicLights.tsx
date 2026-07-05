@@ -12,7 +12,7 @@
  * board that way instead of randomizing tile states directly, which could
  * otherwise produce unsolvable boards.
  */
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 interface RunicLightsProps {
   onWin: () => void;
@@ -60,16 +60,25 @@ function generateScrambledBoard(): boolean[] {
 export default function RunicLights({ onWin }: RunicLightsProps) {
   const [lit, setLit] = useState<boolean[]>(() => generateScrambledBoard());
   const [moves, setMoves] = useState(0);
+  const [rippling, setRippling] = useState<Set<number>>(new Set());
+  const rippleTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleReset = () => {
     setLit(generateScrambledBoard());
     setMoves(0);
+    setRippling(new Set());
   };
 
   const handleTileClick = (index: number) => {
     const next = applyToggle(lit, index);
     setLit(next);
     setMoves((m) => m + 1);
+
+    // Briefly mark the clicked tile + its neighbors so each one plays a
+    // ripple animation, visually tying the click to the tiles it affects.
+    if (rippleTimeout.current) clearTimeout(rippleTimeout.current);
+    setRippling(new Set(neighborsOf(index)));
+    rippleTimeout.current = setTimeout(() => setRippling(new Set()), 420);
 
     if (next.every((v) => v)) {
       setTimeout(() => onWin(), 250);
@@ -90,34 +99,46 @@ export default function RunicLights({ onWin }: RunicLightsProps) {
         className="grid gap-2 mx-auto mb-6"
         style={{ gridTemplateColumns: `repeat(${GRID_SIZE}, minmax(0, 1fr))`, maxWidth: 220 }}
       >
-        {lit.map((isLit, i) => (
-          <button
-            key={i}
-            onClick={() => handleTileClick(i)}
-            className="aspect-square flex items-center justify-center rounded-lg border-2 text-2xl transition-all"
-            style={{
-              borderColor: isLit ? "#f59e0b" : "rgba(255,255,255,0.12)",
-              backgroundColor: isLit ? "rgba(245,158,11,0.18)" : "rgba(255,255,255,0.03)",
-              boxShadow: isLit ? "0 0 16px rgba(245,158,11,0.55)" : "none",
-              animation: isLit ? "runic-pulse 1.8s ease-in-out infinite" : undefined,
-            }}
-          >
-            <span
+        {lit.map((isLit, i) => {
+          const isRippling = rippling.has(i);
+          return (
+            <button
+              key={i}
+              onClick={() => handleTileClick(i)}
+              className="aspect-square flex items-center justify-center rounded-lg border-2 text-2xl transition-all"
               style={{
-                color: isLit ? "#facc15" : "#57534e",
-                textShadow: isLit ? "0 0 8px rgba(250,204,21,0.8)" : "none",
+                borderColor: isLit ? "#f59e0b" : "rgba(255,255,255,0.12)",
+                backgroundColor: isLit ? "rgba(245,158,11,0.18)" : "rgba(255,255,255,0.03)",
+                boxShadow: isLit ? "0 0 16px rgba(245,158,11,0.55)" : "none",
+                animation: isRippling
+                  ? "runic-ripple 0.42s ease-out"
+                  : isLit
+                    ? "runic-pulse 1.8s ease-in-out infinite"
+                    : undefined,
               }}
             >
-              ᛝ
-            </span>
-          </button>
-        ))}
+              <span
+                style={{
+                  color: isLit ? "#facc15" : "#57534e",
+                  textShadow: isLit ? "0 0 8px rgba(250,204,21,0.8)" : "none",
+                }}
+              >
+                ᛝ
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       <style>{`
         @keyframes runic-pulse {
           0%, 100% { box-shadow: 0 0 16px rgba(245,158,11,0.55); }
           50% { box-shadow: 0 0 26px rgba(245,158,11,0.85); }
+        }
+        @keyframes runic-ripple {
+          0% { transform: scale(1); box-shadow: 0 0 0 rgba(250,204,21,0); }
+          35% { transform: scale(1.12); box-shadow: 0 0 30px rgba(250,204,21,0.9); }
+          100% { transform: scale(1); box-shadow: 0 0 16px rgba(245,158,11,0.55); }
         }
       `}</style>
 
