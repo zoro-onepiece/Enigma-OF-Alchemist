@@ -76,20 +76,7 @@ function sleep(ms) {
  * resulting wallet address (or null if no session materialized).
  */
 export async function loginWithEmail(email) {
-  if (!email || !email.includes("@")) {
-    throw new Error("A valid email address is required to send a magic link.");
-  }
-  await withTimeout(
-    magic.auth.loginWithMagicLink({ email }),
-    AUTH_CALL_TIMEOUT_MS,
-    "loginWithMagicLink()",
-  );
-  const info = await withTimeout(
-    magic.user.getInfo(),
-    AUTH_CALL_TIMEOUT_MS,
-    "getInfo() (post-email-login)",
-  );
-  return info?.publicAddress ?? null;
+  await magic.auth.loginWithEmailOTP({ email });
 }
 
 // ── Google OAuth ────────────────────────────────────────────────────────
