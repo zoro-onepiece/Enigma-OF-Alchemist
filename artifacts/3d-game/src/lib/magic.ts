@@ -87,22 +87,33 @@ export function handleOAuthRedirect() {
 
       return addr;
     } catch (err) {
+      // Covers errors like MISSING_PKCE_METADATA (e.g. StrictMode double-fire,
+      // stale/expired code, or the code already being consumed) — Magic may
+      // still have created a session server-side even when this throws.
       console.error("[magic] getRedirectResult failed:", err);
       console.error("[DEBUG] getRedirectResult error name/message/stack:", err?.name, err?.message, err?.stack);
-      // Rescue path: the session may still exist even if result
-      // processing threw — poll before giving up.
-      for (let i = 0; i < 5; i++) {
+
+      // Clear the URL immediately so a reload doesn't re-submit the same
+      // (now-invalid) code and re-trigger this same error in a loop.
+      window.history.replaceState({}, "", window.location.pathname);
+
+      console.log("[magic] Attempting delayed session rescue...");
+      for (let i = 0; i < 6; i++) {
+        await new Promise((r) => setTimeout(r, 500));
         try {
           if (await magic.user.isLoggedIn()) {
             const info = await magic.user.getInfo();
-            console.log("[magic] rescued existing session:", info?.publicAddress);
-            if (info?.publicAddress) return info.publicAddress;
+            const addr = info?.publicAddress ?? null;
+            if (addr) {
+              console.log(`[magic] Rescue successful after ${i + 1} attempt(s)! Address:`, addr);
+              return addr;
+            }
           }
         } catch (rescueErr) {
           console.error("[DEBUG] rescue path isLoggedIn/getInfo failed:", rescueErr);
         }
-        await new Promise((r) => setTimeout(r, 300));
       }
+      console.log("[magic] Rescue failed. User must log in again.");
       return null;
     }
   })();

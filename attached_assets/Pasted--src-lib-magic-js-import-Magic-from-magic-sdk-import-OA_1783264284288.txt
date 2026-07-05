@@ -1,0 +1,106 @@
+// src/lib/magic.js
+import { Magic } from "magic-sdk";
+import { OAuthExtension } from "@magic-ext/oauth2";
+
+const ARBITRUM_SEPOLIA = {
+  rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",
+  chainId: 421614,
+};
+
+export const magic = new Magic(import.meta.env.VITE_MAGIC_PUBLISHABLE_KEY, {
+  network: ARBITRUM_SEPOLIA,
+  extensions: [new OAuthExtension()],
+});
+
+export async function loginWithGoogle() {
+  // Redirect flow
+  await magic.oauth2.loginWithRedirect({
+    provider: "google",
+    redirectURI: window.location.origin,
+  });
+}
+
+let redirectPromise = null;
+
+export function handleOAuthRedirect() {
+  if (redirectPromise) return redirectPromise;
+
+  redirectPromise = (async () => {
+    const params = new URLSearchParams(window.location.search);
+    const hasMagicParams = params.has("magic_oauth_request_id") || 
+                          params.has("magic_credential") || 
+                          params.has("provider") ||
+                          (params.has("state") && params.has("code"));
+
+    if (!hasMagicParams) return null;
+
+    try {
+      console.log("[magic] Processing OAuth redirect...");
+      const result = await magic.oauth2.getRedirectResult();
+      
+      // Clear URL parameters so reloads don't re-trigger
+      window.history.replaceState({}, "", window.location.pathname);
+      
+      let address = result?.magic?.userMetadata?.publicAddress ?? 
+                    result?.oauth?.userMetadata?.publicAddress ?? 
+                    null;
+
+      if (address) {
+        console.log("[magic] Address retrieved successfully:", address);
+        return address;
+      }
+
+    } catch (err) {
+      // 1. Handle the MISSING_PKCE_METADATA error gracefully
+      console.warn("[magic] getRedirectResult threw:", err.message);
+      
+      // 2. Clear the URL immediately to break any loops
+      window.history.replaceState({}, "", window.location.pathname);
+      
+      // 3. Even if PKCE is missing, Magic might have created a session on their server.
+      // We attempt a delayed rescue loop to check for a hidden session.
+      console.log("[magic] Attempting delayed session rescue...");
+      
+      for (let i = 0; i < 6; i++) {
+        // Wait 500ms between checks (total 3 seconds)
+        await new Promise(r => setTimeout(r, 500));
+        try {
+          const loggedIn = await magic.user.isLoggedIn();
+          if (loggedIn) {
+            const info = await magic.user.getInfo();
+            const address = info?.publicAddress ?? null;
+            if (address) {
+              console.log("[magic] Rescue successful! Found session address:", address);
+              return address;
+            }
+          }
+        } catch (e) {
+          // Ignore, keep retrying
+        }
+      }
+      console.log("[magic] Rescue failed. User must log in again.");
+      return null;
+    }
+  })();
+
+  return redirectPromise;
+}
+
+export async function getExistingSession() {
+  try {
+    const loggedIn = await magic.user.isLoggedIn();
+    if (!loggedIn) return null;
+    const info = await magic.user.getInfo();
+    return info?.publicAddress ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function logout() {
+  try {
+    await magic.user.logout();
+  } catch (err) {
+    console.error("Logout failed:", err);
+  }
+}
