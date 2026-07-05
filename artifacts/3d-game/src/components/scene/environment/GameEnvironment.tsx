@@ -8,8 +8,14 @@ import DistantScenery from "./DistantScenery";
 import Pathway from "./Pathway";
 import GlowingPuzzle from "./GlowingPuzzle";
 import JapaneseTemple from "./JapaneseTemple";
+import TempleBeam from "./TempleBeam";
+import TreasureChest from "./TreasureChest";
+import Wildlife from "./Wildlife";
+import FootstepAudio from "./FootstepAudio";
+import AmbientMotes from "../effects/AmbientMotes";
 import { useGameStore } from "../../../store/gameStore";
 import { ISLAND_SCALE, GROUND_SIZE, BOUNDARY_RADIUS } from "../../../lib/worldCollision";
+import { playSfx } from "../../../audio/sounds";
 
 /**
  * GameEnvironment
@@ -100,9 +106,29 @@ function isClearForGroundCover(x: number, z: number) {
   return true;
 }
 
+// Just off the path, between the pathway and the temple platform, so the
+// chest visually reads as "waiting in front of the temple" once it appears.
+const CHEST_POSITION: [number, number, number] = [
+  TEMPLE_POSITION[0],
+  0,
+  TEMPLE_POSITION[2] + 6.5,
+];
+
 export default function GameEnvironment() {
   const puzzleSolved = useGameStore((s) => s.puzzle.solved);
   const openPuzzle = useGameStore((s) => s.openPuzzle);
+  const finaleClaimed = useGameStore((s) => s.finaleClaimed);
+  const claimFinale = useGameStore((s) => s.claimFinale);
+  const allEssencesCollected = puzzleSolved.size >= 4;
+
+  // Opening a puzzle is the pedestal/proximity interaction (this file), not
+  // the mini-game logic itself (that lives in PuzzleModal.tsx + the
+  // individual game components), so playing the "puzzle-open" click SFX
+  // here doesn't touch puzzle mini-game logic.
+  const handleActivate = (id: string) => {
+    playSfx("click", 0.5);
+    openPuzzle(id);
+  };
 
   // Perfectly flat, hard ground — no per-vertex height noise. The player's
   // movement is clamped to a fixed y=0 plane (see Player.tsx), so any bump
@@ -317,6 +343,25 @@ export default function GameEnvironment() {
     return flowers;
   }, []);
 
+  // A handful of anchor points near flower patches for butterflies to
+  // flutter around (Task 4) — derived independently with the same seeded
+  // approach rather than reusing flowerField's internal per-flower loop
+  // state, so it's a plain, self-contained useMemo.
+  const flowerClusterCenters = useMemo<[number, number][]>(() => {
+    const rand = mulberry32(3030);
+    const half = (GROUND_SIZE - 2) / 2;
+    const zOffset = -5 * ISLAND_SCALE;
+    const centers: [number, number][] = [];
+    let attempts = 0;
+    while (centers.length < 6 && attempts < 200) {
+      attempts++;
+      const cx = (rand() - 0.5) * half * 2;
+      const cz = (rand() - 0.5) * half * 2 + zOffset;
+      if (isClearForGroundCover(cx, cz)) centers.push([cx, cz]);
+    }
+    return centers;
+  }, []);
+
   return (
     <>
       {/* Fog now lives solely in Scene.tsx (single source of truth, matched
@@ -413,7 +458,7 @@ export default function GameEnvironment() {
           id={id}
           position={position}
           isSolved={puzzleSolved.has(id)}
-          onActivate={openPuzzle}
+          onActivate={handleActivate}
         />
       ))}
 
@@ -421,6 +466,26 @@ export default function GameEnvironment() {
           far outside the walkable ground so it never interacts with
           collision/gameplay. See DistantScenery.tsx. */}
       <DistantScenery />
+
+      {/* Task 1: footstep cadence detection (reads Player's exported world
+          position every frame; never touches Player.tsx itself). */}
+      <FootstepAudio />
+
+      {/* Task 2: ambient drifting motes across the island. */}
+      <AmbientMotes />
+
+      {/* Task 4: butterflies among the flower clusters + circling birds. */}
+      <Wildlife flowerCenters={flowerClusterCenters} templePosition={TEMPLE_POSITION} />
+
+      {/* Task 3: finale beam + treasure chest, only once all 4 essences are
+          collected. The chest stays visible (and interactable) even after
+          being claimed so the player can revisit it; only the "Press E to
+          claim" prompt and the one-time onEnigmaComplete overlay trigger
+          are gated on finaleClaimed. */}
+      <TempleBeam active={allEssencesCollected} position={TEMPLE_POSITION} />
+      {allEssencesCollected && (
+        <TreasureChest position={CHEST_POSITION} claimed={finaleClaimed} onClaim={claimFinale} />
+      )}
     </>
   );
 }

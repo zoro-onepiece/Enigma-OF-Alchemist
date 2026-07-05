@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Canvas } from "@react-three/fiber";
 import { Environment, Sky, Clouds, Cloud, Stats, KeyboardControls } from "@react-three/drei";
 import * as THREE from "three";
@@ -6,9 +6,12 @@ import Lighting, { SUN_POSITION } from "./Lighting";
 import GameEnvironment from "./environment/GameEnvironment";
 import Player, { playerKeyboardMap } from "../3d/Player";
 import GameHUD from "../hud/GameHUD";
+import AudioMuteToggle from "../hud/AudioMuteToggle";
+import FinaleOverlay from "../hud/FinaleOverlay";
 import PuzzleModal from "../puzzles/PuzzleModal";
 import { useGameStore } from "../../store/gameStore";
 import { ISLAND_SCALE } from "../../lib/worldCollision";
+import { initMusicOnFirstInteraction, playSfx } from "../../audio/sounds";
 
 // Shared daytime sky color — used for the scene background, fog, and (via
 // Lighting.tsx's SUN_POSITION export) kept visually consistent with the sun
@@ -63,12 +66,16 @@ interface SceneProps {
   // still works standalone.
   walletAddress?: string | null;
   onConnectWallet?: () => void;
+  // Task 3: fired once, exactly when the player claims the finale chest.
+  // Defaults to a console.log inside FinaleOverlay if not provided.
+  onEnigmaComplete?: (payload: { score: number; essences: number }) => void;
 }
 
 export default function Scene({
   showStats = false,
   walletAddress: walletAddressProp,
   onConnectWallet: onConnectWalletProp,
+  onEnigmaComplete,
 }: SceneProps) {
   const [health] = useState(72);
   // Single source of truth: score lives in gameStore (Phase 1). Essences are
@@ -85,6 +92,30 @@ export default function Scene({
   const activePuzzleId = useGameStore((s) => s.puzzle.activeId);
   const closePuzzle = useGameStore((s) => s.closePuzzle);
   const solvePuzzle = useGameStore((s) => s.solvePuzzle);
+  const finaleClaimed = useGameStore((s) => s.finaleClaimed);
+  const [finaleOverlayDismissed, setFinaleOverlayDismissed] = useState(false);
+
+  // Arm the "start music after first interaction" listener once.
+  useEffect(() => {
+    initMusicOnFirstInteraction();
+  }, []);
+
+  // Play a chime whenever a puzzle transitions to solved (essence count
+  // increases), and the full victory sting the moment all 4 are collected.
+  // Implemented as a plain effect watching the derived `essences` value
+  // (not inside gameStore.ts or the puzzle mini-game components) so no
+  // existing puzzle/store logic is touched — this is a pure side effect.
+  const prevEssences = useRef(essences);
+  useEffect(() => {
+    if (essences > prevEssences.current) {
+      if (essences >= 4) {
+        playSfx("victory", 0.7);
+      } else {
+        playSfx("chime", 0.6);
+      }
+    }
+    prevEssences.current = essences;
+  }, [essences]);
 
   const [internalWalletAddress, setInternalWalletAddress] = useState<string | null>(null);
 
@@ -168,6 +199,22 @@ export default function Scene({
         walletAddress={walletAddress as never}
         onConnectWallet={onConnectWallet}
       />
+
+      {/* ── Standalone audio mute toggle — separate component from GameHUD
+          per the "don't touch GameHUD internals" rule, shares the same
+          global mute flag as GameHUD's own speaker button. ─────────────── */}
+      <AudioMuteToggle />
+
+      {/* ── Finale overlay (Task 3c) — shown once the treasure chest is
+          claimed, until the player dismisses it. ───────────────────────── */}
+      {finaleClaimed && !finaleOverlayDismissed && (
+        <FinaleOverlay
+          score={score}
+          essences={essences}
+          onEnigmaComplete={onEnigmaComplete}
+          onDismiss={() => setFinaleOverlayDismissed(true)}
+        />
+      )}
 
       {/* ── Rune puzzle modal (Phase 3) ──────────────────────────────────────
           Mounted only while a puzzle is active. onSolved wires straight to

@@ -51,6 +51,11 @@ interface GameStore {
   phase: GamePhase;
   inventoryOpen: boolean;
 
+  // Finale (Task 3): whether the player has claimed the reward chest that
+  // appears once all 4 essences are collected. Additive to the existing
+  // puzzle/phase state above — doesn't change any existing field's meaning.
+  finaleClaimed: boolean;
+
   // Actions
   setGameState: (patch: Partial<GameStore>) => void;
   damagePlayer: (amount: number) => void;
@@ -63,6 +68,7 @@ interface GameStore {
   solvePuzzle: (id: string) => void;
   openInventory: () => void;
   closeInventory: () => void;
+  claimFinale: () => void;
 }
 
 export const useGameStore = create<GameStore>((set) => ({
@@ -78,6 +84,7 @@ export const useGameStore = create<GameStore>((set) => ({
   puzzle: { activeId: null, solved: new Set() },
   phase: "menu",
   inventoryOpen: false,
+  finaleClaimed: false,
 
   // ─── Actions ─────────────────────────────────────────────────────────────────
   setGameState: (patch) => set(patch),
@@ -126,4 +133,6 @@ export const useGameStore = create<GameStore>((set) => ({
 
   openInventory: () => set({ inventoryOpen: true, phase: "inventory" }),
   closeInventory: () => set({ inventoryOpen: false, phase: "exploring" }),
+
+  claimFinale: () => set({ finaleClaimed: true }),
 }));

@@ -1,8 +1,42 @@
 import { useEffect, useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
-import { Html } from "@react-three/drei";
+import { Html, PositionalAudio } from "@react-three/drei";
 import * as THREE from "three";
 import { PLAYER_WORLD_POS } from "../../3d/Player";
+import { audioFileExists } from "../../../audio/sounds";
+import { useSoundStore } from "../../../store/soundStore";
+import SparkleFountain from "../effects/SparkleFountain";
+
+const HUM_PATH = "/audio/hum.mp3";
+
+/** Renders drei's <PositionalAudio> only once we've confirmed hum.mp3
+ * actually exists — avoids a console 404/decode error before the user has
+ * uploaded it (this file is optional; the task only requires music/
+ * footstep/chime/victory/click). */
+function PuzzleHum({ muted }: { muted: boolean }) {
+  const [available, setAvailable] = useState(false);
+  const audioRef = useRef<THREE.PositionalAudio>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    audioFileExists(HUM_PATH).then((ok) => {
+      if (!cancelled) setAvailable(ok);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // drei's <PositionalAudio> doesn't expose a `volume` prop; set it
+  // imperatively on the underlying THREE.PositionalAudio instance instead,
+  // and keep it in sync with the mute toggle.
+  useEffect(() => {
+    audioRef.current?.setVolume(muted ? 0 : 0.18);
+  }, [muted, available]);
+
+  if (!available) return null;
+  return <PositionalAudio ref={audioRef} url={HUM_PATH} distance={4} loop autoplay />;
+}
 
 /**
  * GlowingPuzzle
@@ -71,6 +105,7 @@ export default function GlowingPuzzle({
   const [inRange, setInRange] = useState(false);
   const activeColor = isSolved ? SOLVED_COLOR : color;
   const puzzlePos = useRef(new THREE.Vector3(...position));
+  const soundMuted = useSoundStore((s) => s.muted);
 
   const activate = () => !isSolved && onActivate?.(id);
 
@@ -126,6 +161,17 @@ export default function GlowingPuzzle({
           toneMapped={false}
         />
       </mesh>
+
+      {/* Soft magical hum while unsolved — stops as soon as the puzzle is
+          solved since this whole block only mounts when !isSolved. */}
+      {!isSolved && <PuzzleHum muted={soundMuted} />}
+
+      {/* Gentle golden sparkle fountain rising from a solved pedestal. */}
+      {isSolved && (
+        <group position={[0, 0.3, 0]}>
+          <SparkleFountain count={70} radius={0.4} height={1.6} />
+        </group>
+      )}
 
       {(hovered || inRange) && !isSolved && (
         <Html center distanceFactor={6} position={[0, 1.5, 0]}>
