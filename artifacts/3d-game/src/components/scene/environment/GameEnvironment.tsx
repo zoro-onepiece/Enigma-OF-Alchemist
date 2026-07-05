@@ -70,6 +70,20 @@ const TEMPLE_POSITION: [number, number, number] = [
 
 const GROUND_SEGMENTS = 48;
 
+// Task 1/2: single source of truth for the grassy-green ground color, used
+// for both the island's ground mesh AND the extended horizon-blending
+// ground plane below, so the two can never drift apart / show a seam.
+const GROUND_COLOR = "#5c8a4a";
+
+// Task 2: radius of the extra flat ground disc that fills everything
+// beyond the island out to (and past) the camera's far clip plane (500,
+// see Scene.tsx's <Canvas camera>) so there is never a hard edge or void
+// visible past the island boundary — just the same grassy green fading
+// into the sky via the existing scene fog. Sits 0.03 below the island
+// ground (y=0) to avoid z-fighting where the two overlap.
+const EXTENDED_GROUND_RADIUS = 600;
+const EXTENDED_GROUND_Y = -0.03;
+
 // Keep scattered props clear of the pathway (a loose corridor around x=0)
 // and the temple's footprint — corridor/footprint checks scale with
 // ISLAND_SCALE too since the path/temple positions moved outward with it.
@@ -82,14 +96,28 @@ function isClearOfPathAndTemple(x: number, z: number) {
   return !nearPath && !nearTemple;
 }
 
-// Puzzle pedestal positions, duplicated here (rather than derived from
-// puzzlePlacements at call time) so the ground-cover exclusion check can be
-// a plain function used inside useMemo generators below.
+// Task 3: puzzle pedestal positions, duplicated here (rather than derived
+// from puzzlePlacements at call time) so the ground-cover exclusion check
+// can be a plain function used inside useMemo generators below.
+//
+// Previously all 4 pedestals were clustered along the path within ~24
+// units of each other, so exploration felt cramped. Now spread one per
+// diagonal quadrant (NE/SE/SW/NW) around the island's center rather than
+// along the N/S path axis — the straight cardinal directions are avoided
+// on purpose since the path corridor runs along x≈0 and the temple sits
+// at z≈-99, so a diagonal layout keeps every pedestal well clear of both
+// while still reading as "one per quadrant" around the temple. Each raw
+// coordinate (21, 21) scales to (57.75, 57.75) — a radius of ~81.7 units
+// from center, ~68% of BOUNDARY_RADIUS (120.75), matching the "60-70% of
+// the way to the playable boundary" spec. Puzzle ids are assigned by
+// array index (`puzzle-${i+1}`), not by which raw position they used, so
+// re-ordering/repositioning here never affects which mini-game (Elemental
+// Sudoku, etc.) a given pedestal opens.
 const RAW_PUZZLE_POSITIONS: [number, number][] = [
-  [2.2, -4],
-  [-2.4, -13],
-  [2.6, -20],
-  [-2.2, -28],
+  [21, 21], // puzzle-1 — NE quadrant
+  [21, -21], // puzzle-2 — SE quadrant
+  [-21, -21], // puzzle-3 — SW quadrant
+  [-21, 21], // puzzle-4 — NW quadrant
 ];
 const PUZZLE_POSITIONS: [number, number][] = RAW_PUZZLE_POSITIONS.map(
   ([x, z]) => [x * ISLAND_SCALE, z * ISLAND_SCALE]
@@ -254,14 +282,18 @@ export default function GameEnvironment() {
 
     // Lining both sides of the path, offset just outside the walkable
     // stones (the path corridor is roughly |x| < 2.5 around each waypoint).
+    // Task 4: sink every pot -0.02 below y=0 so the base is embedded in
+    // the ground with no gap, and the 0.75-1.15 scale jitter (was
+    // 0.8-1.4) keeps every instance within the ~0.3-0.5 unit spec range
+    // after GlbFlowerPot's own TARGET_HEIGHT=0.42 base scale.
     for (const [wx, wz] of PATH_WAYPOINTS) {
       for (const side of [-1, 1]) {
         if (rand() < 0.35) continue; // skip some for a natural, uneven line
         const offsetX = side * (2.8 + rand() * 1.6);
         pots.push({
-          position: [wx + offsetX, 0, wz + (rand() - 0.5) * 3],
+          position: [wx + offsetX, -0.02, wz + (rand() - 0.5) * 3],
           rotationY: rand() * Math.PI * 2,
-          scale: 0.8 + rand() * 0.6,
+          scale: 0.75 + rand() * 0.4,
         });
       }
     }
@@ -274,11 +306,11 @@ export default function GameEnvironment() {
       pots.push({
         position: [
           TEMPLE_POSITION[0] + Math.cos(angle) * r,
-          0,
+          -0.02,
           TEMPLE_POSITION[2] + Math.sin(angle) * r,
         ],
         rotationY: rand() * Math.PI * 2,
-        scale: 0.85 + rand() * 0.5,
+        scale: 0.75 + rand() * 0.4,
       });
     }
 
@@ -373,13 +405,33 @@ export default function GameEnvironment() {
           instead of the old dusk purple tint, to match the blue-sky look. */}
       <ambientLight intensity={0.25} color="#fff4e0" />
 
-      {/* Ground — flat, hard, light sandy-yellow autumn ground */}
+      {/* Task 1: island ground — flat, hard, grassy green (was sandy-yellow
+          #e2c17c). GROUND_COLOR is shared with the Task 2 extended ground
+          plane below so the two can never mismatch. */}
       <mesh
         geometry={groundGeometry}
         rotation={[-Math.PI / 2, 0, 0]}
         receiveShadow
       >
-        <meshStandardMaterial color="#e2c17c" roughness={0.95} />
+        <meshStandardMaterial color={GROUND_COLOR} roughness={0.95} />
+      </mesh>
+
+      {/* Task 2: extended ground plane — same exact color/material as the
+          island ground, sitting 0.03 below it, reaching out to (and past)
+          the camera's far clip distance. Fills what used to be a hard
+          edge/void just past the island boundary with a seamless
+          continuation of the same grassy green, which the existing scene
+          fog (Scene.tsx) then fades into the sky at distance. No collision
+          implications — purely visual, sits well outside BOUNDARY_RADIUS
+          where the player can already never walk. */}
+      <mesh
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[0, EXTENDED_GROUND_Y, 0]}
+        receiveShadow={false}
+        castShadow={false}
+      >
+        <circleGeometry args={[EXTENDED_GROUND_RADIUS, 64]} />
+        <meshStandardMaterial color={GROUND_COLOR} roughness={0.95} />
       </mesh>
 
       {/* Pathway leading to the temple — stone count scales with the path's

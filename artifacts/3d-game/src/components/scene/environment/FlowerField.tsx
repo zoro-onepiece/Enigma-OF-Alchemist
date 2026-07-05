@@ -41,16 +41,28 @@ const TRANSPARENT_NODES = [
   "Cylinder.004_anemone_transparent_0",
 ];
 
-// Measured directly from the GLB's accessor min/max (Y-up, no axis fix
-// needed): union bounds X:[-5.627,4.978] Y:[-2.863,3.076] Z:[~0,16.418].
-// Recenter the X/Z footprint and drop the base to y=0 so the flower bed
-// sits flush on the ground like the other scattered props.
-const RECENTER_OFFSET = new THREE.Vector3(0.3247, 2.8633, -8.2092);
-const SOURCE_HEIGHT = 5.9396; // maxY - minY (single-flower stem-to-petal height)
+// Task 4 root-cause fix: this model is NOT Y-up despite the earlier
+// assumption. Measured directly from the GLB's accessor min/max: the stem
+// (opaque part) runs along Z from ~0 to 14.76, and the bloom (transparent
+// part) sits at the far end, Z:[9.52,16.42] — i.e. the flower's actual
+// "up" axis is local +Z, with X/Y only spanning the bloom's lateral
+// width/wobble (X:[-5.63,4.98], Y:[-2.86,3.08]). Treating Y as height (the
+// old code) used the bloom's ~5.9-unit lateral spread as the "height" and
+// never rotated the stem upright — which is exactly why the flowers read
+// as lying flat instead of standing planted in the ground.
+//
+// Fix: recenter X and Y (so the stem's local growth axis, Z, is centered
+// over the placement point) BEFORE rotating local Z onto world +Y with a
+// -90 degrees rotation about X: (x, y, z) -> (x, z, -y). The stem base
+// (z≈0) already sits at the rotation's origin, so it lands exactly at
+// y=0, and Z's full range (0 to 16.42) becomes the model's true height.
+const RECENTER_OFFSET = new THREE.Vector3(0.3245, -0.1065, 0);
+const AXIS_FIX_ROTATION = new THREE.Euler(-Math.PI / 2, 0, 0);
+const SOURCE_HEIGHT = 16.418; // true stem-base-to-petal-tip height (was local Z)
 
-// Ground flower height, per spec: 0.3-0.6 world units so each flower bed
-// reads as a small but clearly visible clump on the ground (previously
-// 0.16, which was too small to register at a normal camera distance).
+// Ground flower height, per spec: 0.3-0.5 world units (below the
+// character's knee) so each flower bed reads as small ground flora, not a
+// waist-high clump.
 const TARGET_HEIGHT = 0.45;
 
 // Sink the base slightly below y=0 (world units, applied after scaling) so
@@ -71,10 +83,15 @@ function attachWindSway(
       "#include <begin_vertex>",
       `#include <begin_vertex>
       float windPhase = instanceMatrix[3].x * 1.7 + instanceMatrix[3].z * 1.3;
-      float heightWeight = clamp((position.y + 2.9) / 5.94, 0.0, 1.0);
+      // Task 4 axis fix follow-through: local Z is the true stem-to-petal
+      // height axis (see AXIS_FIX_ROTATION above, which rotates local Z
+      // onto world +Y), so height-weighting and sway must use local Z/X/Y
+      // — not the old Y-up assumption's Y/X/Z, which would now animate
+      // the stem's *height* (stretching it) instead of swaying it sideways.
+      float heightWeight = clamp(position.z / 16.418, 0.0, 1.0);
       float sway = sin(uTime * 1.6 + windPhase) * 0.35 * heightWeight * heightWeight;
       transformed.x += sway;
-      transformed.z += sway * 0.6;`
+      transformed.y += sway * 0.6;`
     );
   };
   mat.customProgramCacheKey = () => "flower-wind-sway";
@@ -135,11 +152,19 @@ export default function FlowerField({ placements }: FlowerFieldProps) {
   }, [nodes]);
 
   const matrices = useMemo(() => {
-    const local = new THREE.Matrix4().makeTranslation(
-      RECENTER_OFFSET.x,
-      RECENTER_OFFSET.y,
-      RECENTER_OFFSET.z
-    );
+    // Recenter first (in the model's original axes), then rotate local Z
+    // onto world +Y — order matters: composing rotation * translation
+    // means the translation is applied to the point first, then the
+    // rotation, which is what puts the (already-centered) stem upright.
+    const local = new THREE.Matrix4()
+      .makeRotationFromEuler(AXIS_FIX_ROTATION)
+      .multiply(
+        new THREE.Matrix4().makeTranslation(
+          RECENTER_OFFSET.x,
+          RECENTER_OFFSET.y,
+          RECENTER_OFFSET.z
+        )
+      );
     const finalScaleBase = TARGET_HEIGHT / SOURCE_HEIGHT;
 
     return placements.map((p) => {

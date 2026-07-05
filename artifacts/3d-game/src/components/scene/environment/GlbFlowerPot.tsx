@@ -37,9 +37,13 @@ const PART_NODES = [
 const RECENTER_OFFSET: [number, number, number] = [1.013, 0.183, 0.103];
 const SOURCE_HEIGHT = 0.7634; // maxY - minY
 
-// Small garden-accent scale — noticeably smaller than the trees, reads as
-// ground clutter rather than a focal prop.
-const TARGET_HEIGHT = 0.6;
+// Small garden-accent scale — Task 4 spec caps ground flora stem height at
+// ~0.3-0.5 units (below the character's knee); this pot+bloom prop is a
+// touch taller than a bare stem so it reads as an object, but pulled well
+// down from the old 0.6 (which, combined with the 0.8-1.4 instance jitter,
+// produced pots up to 0.84 units tall — clearly oversized next to the
+// character).
+const TARGET_HEIGHT = 0.42;
 
 export interface GlbFlowerPotProps {
   position?: [number, number, number];
