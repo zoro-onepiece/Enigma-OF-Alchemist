@@ -2,11 +2,14 @@
 // Main Menu for "Enigma of Alchemist"
 // v3: dual-authentication onboarding — Email OTP (Magic Link) as the
 // primary option, Google OAuth as a one-click alternative, plus a
-// DEV-ONLY bypass button so collaborators can skip auth entirely while
-// login is being configured. The bypass button renders ONLY in
-// development (import.meta.env.DEV) — it disappears in production.
+// bypass button so collaborators can skip auth entirely while login is
+// being configured. Always shown for now (Magic.link login is still
+// being finalized); flip `SHOW_DEV_BYPASS` to `import.meta.env.DEV`
+// once you're ready to hide it from real players.
 
 import React, { useState } from "react";
+
+const SHOW_DEV_BYPASS = true;
 
 export default function MainMenu({
   onLoginWithEmail,
@@ -15,7 +18,7 @@ export default function MainMenu({
   isLoading = false,
   error = null,
 }) {
-  const isDev = import.meta.env.DEV;
+  const isDev = SHOW_DEV_BYPASS;
   const [email, setEmail] = useState("");
 
   const handleEmailSubmit = (e) => {
