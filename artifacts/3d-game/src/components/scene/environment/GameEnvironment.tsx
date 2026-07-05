@@ -9,6 +9,7 @@ import Pathway from "./Pathway";
 import GlowingPuzzle from "./GlowingPuzzle";
 import JapaneseTemple from "./JapaneseTemple";
 import { useGameStore } from "../../../store/gameStore";
+import { ISLAND_SCALE, GROUND_SIZE, BOUNDARY_RADIUS } from "../../../lib/worldCollision";
 
 /**
  * GameEnvironment
@@ -38,37 +39,54 @@ function mulberry32(seed: number) {
 }
 
 // The path winds from near the player's spawn toward the temple at the far
-// (−Z) end of the garden.
-const PATH_WAYPOINTS: [number, number][] = [
+// (−Z) end of the garden. Raw (pre-scale) waypoints/positions are kept as
+// the original hand-tuned layout, then multiplied by ISLAND_SCALE below so
+// the whole garden spreads outward from the origin (where the player still
+// spawns) without needing to re-tune every coordinate by hand.
+const RAW_PATH_WAYPOINTS: [number, number][] = [
   [0, 2],
   [1.5, -6],
   [-1, -14],
   [1, -22],
   [0, -30],
 ];
+const PATH_WAYPOINTS: [number, number][] = RAW_PATH_WAYPOINTS.map(
+  ([x, z]) => [x * ISLAND_SCALE, z * ISLAND_SCALE]
+);
 
-const TEMPLE_POSITION: [number, number, number] = [0, 0, -36];
+const RAW_TEMPLE_POSITION: [number, number] = [0, -36];
+const TEMPLE_POSITION: [number, number, number] = [
+  RAW_TEMPLE_POSITION[0] * ISLAND_SCALE,
+  0,
+  RAW_TEMPLE_POSITION[1] * ISLAND_SCALE,
+];
 
-const GROUND_SIZE = 90;
 const GROUND_SEGMENTS = 48;
 
 // Keep scattered props clear of the pathway (a loose corridor around x=0)
-// and the temple's footprint near z=-36.
+// and the temple's footprint — corridor/footprint checks scale with
+// ISLAND_SCALE too since the path/temple positions moved outward with it.
 function isClearOfPathAndTemple(x: number, z: number) {
-  const nearPath = Math.abs(x) < 4.5 && z > -34 && z < 5;
-  const nearTemple = Math.hypot(x, z + 36) < 7;
+  const nearPath =
+    Math.abs(x) < 4.5 * ISLAND_SCALE &&
+    z > -34 * ISLAND_SCALE &&
+    z < 5 * ISLAND_SCALE;
+  const nearTemple = Math.hypot(x - TEMPLE_POSITION[0], z - TEMPLE_POSITION[2]) < 7;
   return !nearPath && !nearTemple;
 }
 
 // Puzzle pedestal positions, duplicated here (rather than derived from
 // puzzlePlacements at call time) so the ground-cover exclusion check can be
 // a plain function used inside useMemo generators below.
-const PUZZLE_POSITIONS: [number, number][] = [
+const RAW_PUZZLE_POSITIONS: [number, number][] = [
   [2.2, -4],
   [-2.4, -13],
   [2.6, -20],
   [-2.2, -28],
 ];
+const PUZZLE_POSITIONS: [number, number][] = RAW_PUZZLE_POSITIONS.map(
+  ([x, z]) => [x * ISLAND_SCALE, z * ISLAND_SCALE]
+);
 const PUZZLE_CLEAR_RADIUS = 1.8;
 
 // Extra exclusion for dense ground cover (grass/flowers only) — on top of
@@ -113,8 +131,11 @@ export default function GameEnvironment() {
       scale: number;
       variant: number;
     }[] = [];
+    // Linear (not area) scale-up with the island so the bigger garden stays
+    // well-treed without ballooning draw calls/collider registrations.
+    const count = Math.round(33 * ISLAND_SCALE);
     let attempts = 0;
-    while (trees.length < 33 && attempts < 1000) {
+    while (trees.length < count && attempts < count * 30) {
       attempts++;
       const x = (rand() - 0.5) * (GROUND_SIZE - 10);
       const z = (rand() - 0.5) * (GROUND_SIZE - 10) - 5;
@@ -137,8 +158,9 @@ export default function GameEnvironment() {
       scale: number;
       variant: number;
     }[] = [];
+    const count = Math.round(14 * ISLAND_SCALE);
     let attempts = 0;
-    while (trees.length < 14 && attempts < 500) {
+    while (trees.length < count && attempts < count * 35) {
       attempts++;
       const x = (rand() - 0.5) * (GROUND_SIZE - 10);
       const z = (rand() - 0.5) * (GROUND_SIZE - 10) - 5;
@@ -153,15 +175,43 @@ export default function GameEnvironment() {
     return trees;
   }, []);
 
+  // A sparse ring of trees just outside the walkable boundary, so the edge
+  // of the world reads as "the garden fades into a tree line" rather than
+  // an abrupt drop-off. Purely decorative — sits past BOUNDARY_RADIUS where
+  // the player can never walk, so it never blocks/crowds gameplay.
+  const boundaryRingTrees = useMemo(() => {
+    const rand = mulberry32(9090);
+    const trees: {
+      position: [number, number, number];
+      rotationY: number;
+      scale: number;
+      variant: number;
+      isForest: boolean;
+    }[] = [];
+    const count = Math.round(48 * ISLAND_SCALE);
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * Math.PI * 2 + rand() * 0.15;
+      const r = BOUNDARY_RADIUS + 2 + rand() * 6;
+      trees.push({
+        position: [Math.cos(angle) * r, 0, Math.sin(angle) * r],
+        rotationY: rand() * Math.PI * 2,
+        scale: 0.9 + rand() * 0.6,
+        variant: i % 5,
+        isForest: rand() < 0.35,
+      });
+    }
+    return trees;
+  }, []);
+
   const puzzlePlacements = useMemo(() => {
     // Evenly spaced along the path, just off to the side so they don't
-    // block the walkable stones.
-    return [
-      { id: "puzzle-1", position: [2.2, 0, -4] as [number, number, number] },
-      { id: "puzzle-2", position: [-2.4, 0, -13] as [number, number, number] },
-      { id: "puzzle-3", position: [2.6, 0, -20] as [number, number, number] },
-      { id: "puzzle-4", position: [-2.2, 0, -28] as [number, number, number] },
-    ];
+    // block the walkable stones. Positions come from PUZZLE_POSITIONS
+    // (already scaled by ISLAND_SCALE) so puzzles move outward with the
+    // rest of the garden instead of staying at the old pre-scale spots.
+    return PUZZLE_POSITIONS.map(([x, z], i) => ({
+      id: `puzzle-${i + 1}`,
+      position: [x, 0, z] as [number, number, number],
+    }));
   }, []);
 
   // Small potted-flower accents lining the pathway and ringing the temple
@@ -222,11 +272,13 @@ export default function GameEnvironment() {
     }[] = [];
 
     const half = (GROUND_SIZE - 2) / 2;
-    const zOffset = -5;
-    const targetCount = 450; // within the 300-600 spec range
-    const clusterCount = 26;
+    const zOffset = -5 * ISLAND_SCALE;
+    // Scaled up linearly with the island (not by area) so the bigger garden
+    // still reads as densely flowered without ballooning instance count.
+    const targetCount = Math.round(450 * ISLAND_SCALE);
+    const clusterCount = Math.round(26 * ISLAND_SCALE);
     const perCluster = Math.ceil(targetCount / clusterCount);
-    const clusterRadius = 2.2;
+    const clusterRadius = 2.2; // physical patch size stays the same
 
     let attempts = 0;
     while (flowers.length < targetCount && attempts < clusterCount * 200) {
@@ -284,8 +336,12 @@ export default function GameEnvironment() {
         <meshStandardMaterial color="#e2c17c" roughness={0.95} />
       </mesh>
 
-      {/* Pathway leading to the temple */}
-      <Pathway waypoints={PATH_WAYPOINTS} stoneCount={26} />
+      {/* Pathway leading to the temple — stone count scales with the path's
+          new (longer) length so stepping-stone spacing stays the same. */}
+      <Pathway
+        waypoints={PATH_WAYPOINTS}
+        stoneCount={Math.round(26 * ISLAND_SCALE)}
+      />
 
       {/* Temple at the far end of the path */}
       <JapaneseTemple position={TEMPLE_POSITION} />
@@ -327,6 +383,28 @@ export default function GameEnvironment() {
           variant={tree.variant}
         />
       ))}
+
+      {/* Sparse boundary tree line, just past the walkable radius — softens
+          the new circular edge visually without affecting gameplay. */}
+      {boundaryRingTrees.map((tree, i) =>
+        tree.isForest ? (
+          <GlbForestTree
+            key={`boundary-tree-${i}`}
+            position={tree.position}
+            rotationY={tree.rotationY}
+            scale={tree.scale}
+            variant={tree.variant % 4}
+          />
+        ) : (
+          <GlbAutumnTree
+            key={`boundary-tree-${i}`}
+            position={tree.position}
+            rotationY={tree.rotationY}
+            scale={tree.scale}
+            variant={tree.variant}
+          />
+        )
+      )}
 
       {/* Glowing rune puzzles along the path */}
       {puzzlePlacements.map(({ id, position }) => (

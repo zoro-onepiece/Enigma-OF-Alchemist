@@ -48,13 +48,15 @@ const TRANSPARENT_NODES = [
 const RECENTER_OFFSET = new THREE.Vector3(0.3247, 2.8633, -8.2092);
 const SOURCE_HEIGHT = 5.9396; // maxY - minY (single-flower stem-to-petal height)
 
-// Small ground flower, scaled well below knee height so the bed reads as a
-// tiny cluster nestled in the grass rather than a knee-high plant.
-const TARGET_HEIGHT = 0.16;
+// Ground flower height, per spec: 0.3-0.6 world units so each flower bed
+// reads as a small but clearly visible clump on the ground (previously
+// 0.16, which was too small to register at a normal camera distance).
+const TARGET_HEIGHT = 0.45;
 
 // Sink the base slightly below y=0 (world units, applied after scaling) so
-// the flowers look embedded/rooted in the ground instead of floating on it.
-const EMBED_DEPTH = 0.035;
+// the flowers look embedded/rooted in the ground instead of floating on
+// top of it — small enough not to bury the visible petals.
+const EMBED_DEPTH = 0.02;
 
 function attachWindSway(
   material: THREE.Material,

@@ -1,0 +1,27 @@
+Three fixes for my R3F game, in this exact order. Do NOT modify Player.tsx movement/animation internals, GameHUD internals, or puzzle challenge logic. Verify each task before the next.
+Task 1 — Extend the island to 2.5–3× and add an edge boundary:
+
+Scale the island/terrain to roughly 2.5–3× the current playable area (x/z scale if the ground is flat; uniform + ground re-alignment if it has slopes).
+Spread all world content proportionally outward from the center by the same factor: temple, the 4 puzzle objects, trees, pathway/stepping stones, props. Character spawn stays put. Everything must sit ON the ground at its new position — nothing floating or buried.
+Re-scatter the grass and flower instances across the NEW island area (their distribution radius scales with the island).
+Update src/collision/colliders.ts: move object colliders by the same factor, and set the circular playable boundary radius to the new island edge so the character cannot walk off — clamp the position at the boundary. If the boundary helper isn't called in the movement flow yet, insert the single call where the player's new position is applied (one line only); if there's no safe single insertion point, stop and report the exact file/line.
+Soften the boundary visually with a sparse ring of existing tree/rock instances just outside it.
+
+Task 2 — Plug the flowers into the ground and shrink them:
+The flower GLB instances are currently floating above the terrain and far too large.
+
+Size: scale flower instances down until they are small ground flora — around knee-height of the character or lower (roughly 0.3–0.6 units tall). Keep slight per-instance scale variety.
+Grounding: for every flower instance, set its y so the stem base sits exactly ON the terrain surface. Compute the model's bounding-box bottom offset (the GLB's origin may not be at the stem base) and subtract it, then place instances at groundY. If the terrain has any height variation, raycast down from above each instance position to find the exact surface height instead of using a constant y. Slightly sink them (−0.02) so no floating gap is visible at the base.
+Apply the same grounding check to the grass instances while you're there.
+Verify by walking around: every flower's stem meets the ground — no hovering, no half-buried flowers, sizes natural next to the character.
+
+Task 3 — Fix pyramid mountains + blue sky with clouds:
+
+Mountains: replace each single-cone "pyramid" with a cluster of 3–5 overlapping cones per mountain, each varied in height/radius/tilt/offset, and jitter the cone vertices with small random noise so silhouettes read as irregular ridgelines. Two depth rings: farther ring lighter, nearer slightly darker.
+Mountain color: desaturated atmospheric blue-grey derived from the fog/sky color (hazy silhouettes — flat/basic material, no shadows), so they blend like real distant ranges.
+Sky: bright blue daytime — drei <Sky> with the sun high and low turbidity; ensure any <Environment> has background={false} so it only lights the scene. Keep the directional light matched to the sun position.
+Clouds: drei <Clouds>/<Cloud> — several soft white clouds high above the island (y ≈ 40–80) plus a few larger ones near the horizon above the mountains, slow drift.
+Fog: matches the sky color, far distance beyond the mountains so their bases fade into haze, and still hides the extended ground's edge from Task 1.
+
+Final verify: island takes noticeably longer to cross and the character is stopped at the edge; all objects/puzzles grounded and interactable at new positions; flowers small and rooted in the ground everywhere; mountains look like hazy irregular ranges (no clean pyramids from any angle); blue sky with drifting clouds; no seams, no FPS drop below baseline, no console errors. Report: island scale factor, boundary radius, flower scale + grounding method used, and mountain colors.
+Rules: vegetation stays GPU-instanced; no new packages; don't touch Player.tsx beyond the single boundary-call line if needed; don't modify GameHUD internals or puzzle logic.

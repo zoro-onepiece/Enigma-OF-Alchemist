@@ -2,7 +2,7 @@ import { Suspense, useRef, useEffect, useState, useMemo } from "react";
 import { useGLTF, useAnimations, useKeyboardControls } from "@react-three/drei";
 import { useFrame, useThree, createPortal } from "@react-three/fiber";
 import * as THREE from "three";
-import { resolveMove } from "../../lib/worldCollision";
+import { resolveMove, clampToBoundary } from "../../lib/worldCollision";
 
 export const PLAYER_SPAWN: [number, number, number] = [0, 0, 0];
 export const PLAYER_WORLD_POS = new THREE.Vector3(...PLAYER_SPAWN);
@@ -379,6 +379,7 @@ function PlayerModel() {
       );
       g.position.x = resolved.x;
       g.position.z = resolved.z;
+      ({ x: g.position.x, z: g.position.z } = clampToBoundary(g.position.x, g.position.z));
 
       const targetAngle = Math.atan2(_moveDir.x, _moveDir.z);
       let diff = targetAngle - g.rotation.y;

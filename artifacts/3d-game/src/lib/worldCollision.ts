@@ -10,6 +10,16 @@
  * `resolveMove` once per frame to slide movement along obstacles instead of
  * clipping through them.
  */
+// How much bigger the island is than the original 90-unit ground plane.
+// Single source of truth for GameEnvironment.tsx's ground/prop layout and
+// this file's circular playable boundary, so they can never drift apart.
+export const ISLAND_SCALE = 2.75;
+export const GROUND_SIZE = 90 * ISLAND_SCALE; // 247.5
+
+// Circular playable boundary, a few units inside the literal ground edge so
+// the player never visually clips past the mesh before being stopped.
+export const BOUNDARY_RADIUS = GROUND_SIZE / 2 - 3;
+
 export interface WallBlocker {
   minX: number;
   maxX: number;
@@ -69,4 +79,17 @@ export function resolveMove(
     if (!collidesAt(nx, tryZ)) nz = tryZ;
   }
   return { x: nx, z: nz };
+}
+
+/**
+ * Clamps (x, z) to within the circular playable boundary so the character
+ * can't walk off the edge of the island. No-op while inside the radius;
+ * otherwise projects back onto the boundary circle along the same
+ * direction from the origin.
+ */
+export function clampToBoundary(x: number, z: number): { x: number; z: number } {
+  const dist = Math.hypot(x, z);
+  if (dist <= BOUNDARY_RADIUS || dist === 0) return { x, z };
+  const scale = BOUNDARY_RADIUS / dist;
+  return { x: x * scale, z: z * scale };
 }

@@ -8,6 +8,7 @@ import Player, { playerKeyboardMap } from "../3d/Player";
 import GameHUD from "../hud/GameHUD";
 import PuzzleModal from "../ui/PuzzleModal";
 import { useGameStore } from "../../store/gameStore";
+import { ISLAND_SCALE } from "../../lib/worldCollision";
 
 // Shared daytime sky color — used for the scene background, fog, and (via
 // Lighting.tsx's SUN_POSITION export) kept visually consistent with the sun
@@ -136,12 +137,16 @@ export default function Scene({
             the sky at any zoom/camera distance — no white gaps beyond the
             ground plane or Sky dome. GameEnvironment.tsx intentionally does
             NOT declare its own <fog>; this is the single source of truth.
-            Far distance (300) is pushed out past DistantScenery's mountain
-            ring (max radius ~240) and floating islands (max radius ~220) so
-            they fade softly into the sky color instead of hard-clipping at
-            the old 220 cutoff, which used to make them vanish abruptly. */}
+            Near/far scale with ISLAND_SCALE so the haze still starts well
+            past the (now bigger) walkable ground and the far cutoff clears
+            DistantScenery's far mountain ring (max radius ~270*scale) and
+            floating islands (max radius ~220*scale), letting them fade
+            softly into the sky color instead of hard-clipping. */}
         <color attach="background" args={[SKY_COLOR]} />
-        <fog attach="fog" args={[SKY_COLOR, 60, 300]} />
+        <fog
+          attach="fog"
+          args={[SKY_COLOR, 60 * ISLAND_SCALE, 300 * ISLAND_SCALE]}
+        />
 
         {/* ── Code-generated Japanese temple garden environment ────────────
             Ground, pathway, temple, trees, and puzzle props — see
