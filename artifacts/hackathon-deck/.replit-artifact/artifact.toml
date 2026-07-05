@@ -1,0 +1,31 @@
+kind = "slides"
+previewPath = "/hackathon-deck/"
+title = "Enigma of Alchemist — Hackathon Deck"
+version = "1.0.0"
+id = "artifacts/hackathon-deck"
+router = "path"
+
+[[integratedSkills]]
+name = "slides"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/hackathon-deck/" ]
+localPort = 24163
+
+[services.development]
+run = "pnpm --filter @workspace/hackathon-deck run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/hackathon-deck", "run", "build" ]
+publicDir = "artifacts/hackathon-deck/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "24163"
+BASE_PATH = "/hackathon-deck/"
