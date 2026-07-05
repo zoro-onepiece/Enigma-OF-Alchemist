@@ -1,13 +1,14 @@
 // src/App.jsx
 // Root of "Enigma of Alchemist"
-// Flow: MainMenu (email OTP) → 3D game + HUD
+// Flow: MainMenu → (Email OTP OR Google OAuth OR dev bypass) → 3D game + HUD
 //
-// v3: Google OAuth was replaced with Magic Link email OTP — see
-// src/lib/magic.ts for why.
+// v4: Dual-authentication onboarding — Email OTP (Magic Link) remains the
+// primary/most reliable path (see src/lib/magic.ts for the Replit-iframe
+// history), and Google OAuth is offered as a one-click alternative.
 //
 // Dev bypass: sets a fake wallet so frontend work can continue without
-// needing to click through a real email login. Only reachable in dev
-// builds (the button is hidden in production by MainMenu).
+// needing to click through a real login. Only reachable in dev builds
+// (the button is hidden in production by MainMenu).
 //
 // NOTE ON INTEGRATION: Scene (@/components/scene/Scene) already mounts its
 // own <Canvas> and its own <GameHUD> internally (it's a self-contained,
@@ -22,7 +23,13 @@
 import React, { useEffect, useState } from "react";
 import Scene from "@/components/scene/Scene";
 import MainMenu from "@/MainMenu";
-import { loginWithEmail, getExistingSession, logout } from "@/lib/magic";
+import {
+  loginWithEmail,
+  loginWithGoogle,
+  handleOAuthRedirect,
+  getExistingSession,
+  logout,
+} from "@/lib/magic";
 
 // Obviously-fake address so it's never confused with a real wallet.
 const DEV_WALLET = "0xDEV000000000000000000000000000000000DEV";
@@ -30,19 +37,40 @@ const DEV_WALLET = "0xDEV000000000000000000000000000000000DEV";
 export default function App() {
   const [walletAddress, setWalletAddress] = useState(null);
   const [isDevSession, setIsDevSession] = useState(false);
-  const [authLoading, setAuthLoading] = useState(true);
+  // `bootstrapping` covers ONLY the one-time initial redirect/session check
+  // on mount — it gates whether the login menu is rendered at all, so the
+  // menu never flashes on screen mid-bootstrap. `authLoading` is a separate
+  // flag that only reflects "a login attempt (email OTP or Google) is in
+  // flight" and drives MainMenu's own spinner state. Keeping these separate
+  // matters: reusing one flag for both meant clicking a login action
+  // re-triggered the bootstrap's blank-screen gate, hiding the login UI
+  // behind an empty screen instead of showing the intended loading state.
+  const [bootstrapping, setBootstrapping] = useState(true);
+  const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState(null);
 
   useEffect(() => {
+    // Order matters: check for a fresh OAuth redirect first (the user just
+    // came back from Google), then fall back to an existing session (the
+    // user revisited/refreshed while already logged in, whether via email
+    // OTP or Google). The login screen is only rendered once both checks
+    // have resolved (bootstrapping=false), so there's no flash of the
+    // login screen while auth is still loading.
     (async () => {
+      const fromRedirect = await handleOAuthRedirect();
+      if (fromRedirect) {
+        setWalletAddress(fromRedirect);
+        setBootstrapping(false);
+        return;
+      }
       const existing = await getExistingSession();
       console.log("[DEBUG] getExistingSession() resolved with:", existing);
       if (existing) setWalletAddress(existing);
-      setAuthLoading(false);
+      setBootstrapping(false);
     })();
   }, []);
 
-  const handleLogin = async (email) => {
+  const handleLoginWithEmail = async (email) => {
     setAuthError(null);
     setAuthLoading(true);
     try {
@@ -56,9 +84,21 @@ export default function App() {
         setAuthError("Login didn't complete — please try again.");
       }
     } catch (err) {
-      console.error("Login failed:", err);
-      setAuthError(err?.message ?? "Login failed — please try again.");
+      console.error("Email login failed:", err);
+      setAuthError(err?.message || "Email login failed. Please try again.");
     } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleLoginWithGoogle = async () => {
+    setAuthError(null);
+    setAuthLoading(true);
+    try {
+      await loginWithGoogle(); // redirects away to Google
+    } catch (err) {
+      console.error("Google login failed:", err);
+      setAuthError(err?.message || "Google login failed. Please try again.");
       setAuthLoading(false);
     }
   };
@@ -79,6 +119,16 @@ export default function App() {
 
   const isLoggedIn = Boolean(walletAddress);
 
+  // While the initial redirect/session check is still resolving, render
+  // nothing but the backdrop rather than the login menu — otherwise the
+  // menu flashes on screen during bootstrap, which looks identical to a
+  // "bounce back to login" even when auth is actually still loading. Once
+  // bootstrap resolves, the menu (and its own isLoading-driven spinner) is
+  // always shown instead of this blank screen.
+  if (bootstrapping && !isLoggedIn) {
+    return <div className="relative h-screen w-screen overflow-hidden bg-slate-950" />;
+  }
+
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-slate-950">
       {isLoggedIn && (
@@ -96,7 +146,8 @@ export default function App() {
 
       {!isLoggedIn && (
         <MainMenu
-          onLogin={handleLogin}
+          onLoginWithEmail={handleLoginWithEmail}
+          onLoginWithGoogle={handleLoginWithGoogle}
           onDevBypass={handleDevBypass}
           isLoading={authLoading}
           error={authError}

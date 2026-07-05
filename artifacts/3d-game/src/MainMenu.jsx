@@ -1,23 +1,27 @@
 // src/MainMenu.jsx
 // Main Menu for "Enigma of Alchemist"
-// v3: Login is now email OTP (Magic Link) instead of Google OAuth — see
-// src/lib/magic.ts for why.
-//
-// Also keeps a DEV-ONLY bypass button so collaborators can skip login
-// while auth is being configured. The bypass button renders ONLY in
+// v3: dual-authentication onboarding — Email OTP (Magic Link) as the
+// primary option, Google OAuth as a one-click alternative, plus a
+// DEV-ONLY bypass button so collaborators can skip auth entirely while
+// login is being configured. The bypass button renders ONLY in
 // development (import.meta.env.DEV) — it disappears in production.
 
 import React, { useState } from "react";
 
-export default function MainMenu({ onLogin, onDevBypass, isLoading = false, error = null }) {
+export default function MainMenu({
+  onLoginWithEmail,
+  onLoginWithGoogle,
+  onDevBypass,
+  isLoading = false,
+  error = null,
+}) {
   const isDev = import.meta.env.DEV;
   const [email, setEmail] = useState("");
 
-  const handleSubmit = (e) => {
+  const handleEmailSubmit = (e) => {
     e.preventDefault();
-    const trimmed = email.trim();
-    if (!trimmed || isLoading) return;
-    onLogin(trimmed);
+    if (!email || isLoading) return;
+    onLoginWithEmail(email);
   };
 
   return (
@@ -59,51 +63,84 @@ export default function MainMenu({ onLogin, onDevBypass, isLoading = false, erro
         </p>
       </div>
 
-      {/* ── LOGIN FORM (Magic Link email OTP) ───────────────────────── */}
-      <form
-        onSubmit={handleSubmit}
-        className="relative mt-14 flex w-full max-w-sm flex-col items-center gap-4 px-6"
-      >
-        <input
-          type="email"
-          required
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          disabled={isLoading}
-          placeholder="you@example.com"
-          className="w-full rounded-xl border-2 border-amber-500/60 bg-stone-900/70 px-5 py-3 text-center text-amber-100 placeholder:text-stone-500 outline-none transition-colors focus:border-amber-300 disabled:opacity-60"
-        />
+      {/* ── AUTH CARD ─────────────────────────────────────────────────── */}
+      <div className="relative mt-12 flex w-full max-w-sm flex-col items-stretch gap-4 px-6">
+        {/* ── OPTION A: Email OTP (Magic Link) ─────────────────────────── */}
+        <form onSubmit={handleEmailSubmit} className="flex flex-col gap-3">
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@example.com"
+            disabled={isLoading}
+            required
+            className="w-full rounded-xl border-2 border-emerald-700/60 bg-stone-900/80 px-5 py-3 text-center text-amber-100 placeholder:text-stone-500 outline-none transition-colors focus:border-amber-400/80 disabled:opacity-60"
+          />
+          <button
+            type="submit"
+            disabled={isLoading || !email}
+            className="group relative rounded-xl border-2 border-amber-500/90 bg-gradient-to-b from-stone-800 to-emerald-950 px-8 py-4 text-lg font-semibold tracking-widest text-amber-100 shadow-[0_0_24px_rgba(217,119,6,0.4)] transition-all hover:scale-105 hover:border-amber-300 hover:shadow-[0_0_36px_rgba(251,191,36,0.6)] active:scale-95 disabled:cursor-wait disabled:opacity-60 disabled:hover:scale-100"
+          >
+            {isLoading ? (
+              <span className="flex items-center justify-center gap-3">
+                <span className="h-5 w-5 animate-spin rounded-full border-2 border-amber-300 border-t-transparent" />
+                Summoning Portal…
+              </span>
+            ) : (
+              <span className="flex items-center justify-center gap-3">
+                <span className="transition-transform group-hover:rotate-12">🜛</span>
+                Send Magic Link
+              </span>
+            )}
+          </button>
+        </form>
 
+        {/* ── DIVIDER ───────────────────────────────────────────────────── */}
+        <div className="flex items-center gap-3 py-1">
+          <div className="h-px flex-1 bg-emerald-700/40" />
+          <span className="text-xs uppercase tracking-[0.3em] text-emerald-400/60">
+            or
+          </span>
+          <div className="h-px flex-1 bg-emerald-700/40" />
+        </div>
+
+        {/* ── OPTION B: Google OAuth ────────────────────────────────────── */}
         <button
-          type="submit"
-          disabled={isLoading || !email.trim()}
-          className="group relative w-full rounded-xl border-2 border-amber-500/90 bg-gradient-to-b from-stone-800 to-emerald-950 px-12 py-4 text-xl font-semibold tracking-widest text-amber-100 shadow-[0_0_24px_rgba(217,119,6,0.4)] transition-all hover:scale-105 hover:border-amber-300 hover:shadow-[0_0_36px_rgba(251,191,36,0.6)] active:scale-95 disabled:cursor-wait disabled:opacity-60 disabled:hover:scale-100"
+          type="button"
+          onClick={onLoginWithGoogle}
+          disabled={isLoading}
+          className="flex items-center justify-center gap-3 rounded-xl border-2 border-stone-500/60 bg-stone-900/70 px-8 py-4 text-base font-semibold tracking-wide text-stone-100 transition-all hover:scale-105 hover:border-stone-300 active:scale-95 disabled:cursor-wait disabled:opacity-60 disabled:hover:scale-100"
         >
-          <span className="absolute -left-2 -top-2 text-amber-400/80">✦</span>
-          <span className="absolute -bottom-2 -right-2 text-amber-400/80">✦</span>
-
-          {isLoading ? (
-            <span className="flex items-center justify-center gap-3">
-              <span className="h-5 w-5 animate-spin rounded-full border-2 border-amber-300 border-t-transparent" />
-              Summoning Portal…
-            </span>
-          ) : (
-            <span className="flex items-center justify-center gap-3">
-              <span className="transition-transform group-hover:rotate-12">🜛</span>
-              Send Magic Link
-            </span>
-          )}
+          <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
+            <path
+              fill="#4285F4"
+              d="M23.49 12.27c0-.79-.07-1.54-.19-2.27H12v4.51h6.47c-.29 1.48-1.14 2.73-2.4 3.58v3h3.86c2.26-2.09 3.56-5.17 3.56-8.82z"
+            />
+            <path
+              fill="#34A853"
+              d="M12 24c3.24 0 5.95-1.07 7.93-2.91l-3.86-3c-1.08.72-2.45 1.16-4.07 1.16-3.13 0-5.78-2.11-6.73-4.96H1.29v3.09C3.26 21.3 7.31 24 12 24z"
+            />
+            <path
+              fill="#FBBC05"
+              d="M5.27 14.29c-.25-.72-.38-1.49-.38-2.29s.14-1.57.38-2.29V6.62H1.29A11.96 11.96 0 000 12c0 1.94.46 3.77 1.29 5.38l3.98-3.09z"
+            />
+            <path
+              fill="#EA4335"
+              d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.94 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.98 3.09C6.22 6.86 8.87 4.75 12 4.75z"
+            />
+          </svg>
+          Continue with Google
         </button>
 
         {error && (
-          <p className="text-center text-xs text-red-400" role="alert">
+          <p className="mt-1 text-center text-xs text-red-400" role="alert">
             {error}
           </p>
         )}
-      </form>
+      </div>
 
       <p className="mt-6 text-xs tracking-wider text-stone-400">
-        Enter your email — your wallet is conjured automatically
+        Sign in with email or Google — your wallet is conjured automatically
       </p>
 
       {/* ── DEV BYPASS (development builds only) ──────────────────────── */}

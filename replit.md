@@ -40,6 +40,8 @@ _Populate as you build — explicit user instructions worth remembering across s
 
 _Populate as you build — sharp edges, "always run X before Y" rules._
 
+- **Enigma of Alchemist (`artifacts/3d-game`) Google login via Magic.link**: `VITE_MAGIC_PUBLISHABLE_KEY` must be a real key copied from https://dashboard.magic.link (Social Login → Google enabled), and the app's exact origin (dev preview domain and/or published domain) must be added as an allowed redirect URI in both the Magic dashboard and the matching Google Cloud OAuth client. If the key is a placeholder/invalid value, Magic SDK calls (`isLoggedIn`, `getRedirectResult`, `loginWithRedirect`) can hang indefinitely instead of erroring — `src/lib/magic.ts` wraps them with an 8s timeout so the UI always falls back to the login screen instead of hanging forever, but login itself will not complete until a valid key + redirect URI are configured.
+
 ## Pointers
 
 - See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
