@@ -1,11 +1,15 @@
 // @ts-nocheck
 // src/lib/magic.js
 // Magic SDK instance for "Enigma of Alchemist" — Arbitrum Sepolia
-// v2: OAuth redirect handling is now double-call proof (React StrictMode
-// runs effects twice in dev, and getRedirectResult may only run once).
+// v3: Switched from Google OAuth2 to Email OTP (Magic Link email login).
+// Google OAuth was abandoned because Replit's iframe preview environment
+// enforces third-party cookie restrictions that broke the OAuth session
+// handoff (getRedirectResult kept resolving with a null address). Email
+// OTP uses Magic's own hosted flow (an iframe/modal) and does not depend
+// on third-party cookies or a redirect round-trip, so it works reliably
+// inside the Replit preview.
 
 import { Magic } from "magic-sdk";
-import { OAuthExtension } from "@magic-ext/oauth2";
 
 const ARBITRUM_SEPOLIA = {
   rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",
@@ -14,120 +18,29 @@ const ARBITRUM_SEPOLIA = {
 
 export const magic = new Magic(import.meta.env.VITE_MAGIC_PUBLISHABLE_KEY, {
   network: ARBITRUM_SEPOLIA,
-  extensions: [new OAuthExtension()],
 });
 
-export async function loginWithGoogle() {
-  await magic.oauth2.loginWithRedirect({
-    provider: "google",
-    redirectURI: window.location.origin,
-  });
+/**
+ * Sends a Magic Link to the given email and resolves once the user has
+ * clicked it and completed login (Magic handles the whole flow via its
+ * own hosted UI — no redirect back to our app is required).
+ */
+export async function loginWithEmail(email) {
+  await magic.auth.loginWithMagicLink({ email });
 }
 
-/* ── Singleton redirect handler ────────────────────────────────────────
-   getRedirectResult() may only be called ONCE per redirect. React
-   StrictMode mounts effects twice in dev, so we cache the promise at
-   module level — the second call reuses the same in-flight promise
-   instead of firing a second (failing) request. */
-let redirectPromise = null;
-
-export function handleOAuthRedirect() {
-  if (redirectPromise) return redirectPromise;
-
-  redirectPromise = (async () => {
-    const params = new URLSearchParams(window.location.search);
-    console.log("[DEBUG] handleOAuthRedirect: search params =", window.location.search);
-    console.log("[DEBUG] handleOAuthRedirect: param keys =", Array.from(params.keys()));
-    // Broad detection: any of the params Magic/Google attach on return
-    const looksLikeOAuthReturn =
-      params.has("magic_oauth_request_id") ||
-      params.has("magic_credential") ||
-      params.has("provider") ||
-      (params.has("state") && params.has("code")) ||
-      params.has("code");
-
-    console.log("[DEBUG] handleOAuthRedirect: looksLikeOAuthReturn =", looksLikeOAuthReturn);
-
-    if (!looksLikeOAuthReturn) return null;
-
-    try {
-      const result = await magic.oauth2.getRedirectResult();
-      console.log("[DEBUG] handleOAuthRedirect: getRedirectResult() raw result =", result);
-      window.history.replaceState({}, "", window.location.pathname);
-
-      // Address can land under either `magic` or `oauth`, depending on
-      // provider/SDK version — check both before falling back to the
-      // rescue loop.
-      let addr =
-        result?.magic?.userMetadata?.publicAddress ??
-        result?.oauth?.userMetadata?.publicAddress ??
-        null;
-      console.log("[magic] OAuth redirect processed, address:", addr);
-
-      // The browser may not have synced the Magic session yet even
-      // though getRedirectResult() succeeded. Poll isLoggedIn/getInfo a
-      // few times before giving up, instead of a single check.
-      if (!addr) {
-        console.warn("[magic] address missing from result, running rescue loop...");
-        for (let i = 0; i < 5 && !addr; i++) {
-          await new Promise((r) => setTimeout(r, 300));
-          try {
-            if (await magic.user.isLoggedIn()) {
-              const info = await magic.user.getInfo();
-              addr = info?.publicAddress ?? null;
-              if (addr) {
-                console.log(`[magic] rescue succeeded after ${i + 1} attempt(s):`, addr);
-              }
-            }
-          } catch (rescueErr) {
-            console.error("[DEBUG] rescue loop attempt failed:", rescueErr);
-          }
-        }
-      }
-
-      return addr;
-    } catch (err) {
-      // Covers errors like MISSING_PKCE_METADATA (e.g. StrictMode double-fire,
-      // stale/expired code, or the code already being consumed) — Magic may
-      // still have created a session server-side even when this throws.
-      console.error("[magic] getRedirectResult failed:", err);
-      console.error("[DEBUG] getRedirectResult error name/message/stack:", err?.name, err?.message, err?.stack);
-
-      // Clear the URL immediately so a reload doesn't re-submit the same
-      // (now-invalid) code and re-trigger this same error in a loop.
-      window.history.replaceState({}, "", window.location.pathname);
-
-      console.log("[magic] Attempting delayed session rescue...");
-      for (let i = 0; i < 6; i++) {
-        await new Promise((r) => setTimeout(r, 500));
-        try {
-          if (await magic.user.isLoggedIn()) {
-            const info = await magic.user.getInfo();
-            const addr = info?.publicAddress ?? null;
-            if (addr) {
-              console.log(`[magic] Rescue successful after ${i + 1} attempt(s)! Address:`, addr);
-              return addr;
-            }
-          }
-        } catch (rescueErr) {
-          console.error("[DEBUG] rescue path isLoggedIn/getInfo failed:", rescueErr);
-        }
-      }
-      console.log("[magic] Rescue failed. User must log in again.");
-      return null;
-    }
-  })();
-
-  return redirectPromise;
-}
-
+/**
+ * Returns the wallet address for the current Magic session, or null if
+ * there isn't one.
+ */
 export async function getExistingSession() {
   try {
     const loggedIn = await magic.user.isLoggedIn();
     if (!loggedIn) return null;
     const info = await magic.user.getInfo();
     return info?.publicAddress ?? null;
-  } catch {
+  } catch (err) {
+    console.error("[magic] getExistingSession failed:", err);
     return null;
   }
 }

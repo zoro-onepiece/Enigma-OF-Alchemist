@@ -1,13 +1,24 @@
 // src/MainMenu.jsx
 // Main Menu for "Enigma of Alchemist"
-// v2: adds a DEV-ONLY bypass button so collaborators can skip Google
-// login while auth is being configured. The bypass button renders ONLY
-// in development (import.meta.env.DEV) — it disappears in production.
+// v3: Login is now email OTP (Magic Link) instead of Google OAuth — see
+// src/lib/magic.ts for why.
+//
+// Also keeps a DEV-ONLY bypass button so collaborators can skip login
+// while auth is being configured. The bypass button renders ONLY in
+// development (import.meta.env.DEV) — it disappears in production.
 
-import React from "react";
+import React, { useState } from "react";
 
-export default function MainMenu({ onLogin, onDevBypass, isLoading = false }) {
+export default function MainMenu({ onLogin, onDevBypass, isLoading = false, error = null }) {
   const isDev = import.meta.env.DEV;
+  const [email, setEmail] = useState("");
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const trimmed = email.trim();
+    if (!trimmed || isLoading) return;
+    onLogin(trimmed);
+  };
 
   return (
     <div className="absolute inset-0 z-[60] flex flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-stone-950 via-emerald-950 to-stone-950 font-serif">
@@ -48,30 +59,51 @@ export default function MainMenu({ onLogin, onDevBypass, isLoading = false }) {
         </p>
       </div>
 
-      {/* ── LOGIN BUTTON (real Google auth) ───────────────────────────── */}
-      <button
-        onClick={onLogin}
-        disabled={isLoading}
-        className="group relative mt-14 rounded-xl border-2 border-amber-500/90 bg-gradient-to-b from-stone-800 to-emerald-950 px-12 py-4 text-xl font-semibold tracking-widest text-amber-100 shadow-[0_0_24px_rgba(217,119,6,0.4)] transition-all hover:scale-105 hover:border-amber-300 hover:shadow-[0_0_36px_rgba(251,191,36,0.6)] active:scale-95 disabled:cursor-wait disabled:opacity-60"
+      {/* ── LOGIN FORM (Magic Link email OTP) ───────────────────────── */}
+      <form
+        onSubmit={handleSubmit}
+        className="relative mt-14 flex w-full max-w-sm flex-col items-center gap-4 px-6"
       >
-        <span className="absolute -left-2 -top-2 text-amber-400/80">✦</span>
-        <span className="absolute -bottom-2 -right-2 text-amber-400/80">✦</span>
+        <input
+          type="email"
+          required
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          disabled={isLoading}
+          placeholder="you@example.com"
+          className="w-full rounded-xl border-2 border-amber-500/60 bg-stone-900/70 px-5 py-3 text-center text-amber-100 placeholder:text-stone-500 outline-none transition-colors focus:border-amber-300 disabled:opacity-60"
+        />
 
-        {isLoading ? (
-          <span className="flex items-center gap-3">
-            <span className="h-5 w-5 animate-spin rounded-full border-2 border-amber-300 border-t-transparent" />
-            Summoning Portal…
-          </span>
-        ) : (
-          <span className="flex items-center gap-3">
-            <span className="transition-transform group-hover:rotate-12">🜛</span>
-            Login to Play
-          </span>
+        <button
+          type="submit"
+          disabled={isLoading || !email.trim()}
+          className="group relative w-full rounded-xl border-2 border-amber-500/90 bg-gradient-to-b from-stone-800 to-emerald-950 px-12 py-4 text-xl font-semibold tracking-widest text-amber-100 shadow-[0_0_24px_rgba(217,119,6,0.4)] transition-all hover:scale-105 hover:border-amber-300 hover:shadow-[0_0_36px_rgba(251,191,36,0.6)] active:scale-95 disabled:cursor-wait disabled:opacity-60 disabled:hover:scale-100"
+        >
+          <span className="absolute -left-2 -top-2 text-amber-400/80">✦</span>
+          <span className="absolute -bottom-2 -right-2 text-amber-400/80">✦</span>
+
+          {isLoading ? (
+            <span className="flex items-center justify-center gap-3">
+              <span className="h-5 w-5 animate-spin rounded-full border-2 border-amber-300 border-t-transparent" />
+              Summoning Portal…
+            </span>
+          ) : (
+            <span className="flex items-center justify-center gap-3">
+              <span className="transition-transform group-hover:rotate-12">🜛</span>
+              Send Magic Link
+            </span>
+          )}
+        </button>
+
+        {error && (
+          <p className="text-center text-xs text-red-400" role="alert">
+            {error}
+          </p>
         )}
-      </button>
+      </form>
 
       <p className="mt-6 text-xs tracking-wider text-stone-400">
-        Sign in with Google — your wallet is conjured automatically
+        Enter your email — your wallet is conjured automatically
       </p>
 
       {/* ── DEV BYPASS (development builds only) ──────────────────────── */}

@@ -1,10 +1,13 @@
 // src/App.jsx
 // Root of "Enigma of Alchemist"
-// Flow: MainMenu → (Google login OR dev bypass) → 3D game + HUD
+// Flow: MainMenu (email OTP) → 3D game + HUD
 //
-// Dev bypass: sets a fake wallet so frontend work can continue while
-// Google OAuth is being configured. Only reachable in dev builds
-// (the button is hidden in production by MainMenu).
+// v3: Google OAuth was replaced with Magic Link email OTP — see
+// src/lib/magic.ts for why.
+//
+// Dev bypass: sets a fake wallet so frontend work can continue without
+// needing to click through a real email login. Only reachable in dev
+// builds (the button is hidden in production by MainMenu).
 //
 // NOTE ON INTEGRATION: Scene (@/components/scene/Scene) already mounts its
 // own <Canvas> and its own <GameHUD> internally (it's a self-contained,
@@ -19,12 +22,7 @@
 import React, { useEffect, useState } from "react";
 import Scene from "@/components/scene/Scene";
 import MainMenu from "@/MainMenu";
-import {
-  loginWithGoogle,
-  handleOAuthRedirect,
-  getExistingSession,
-  logout,
-} from "@/lib/magic";
+import { loginWithEmail, getExistingSession, logout } from "@/lib/magic";
 
 // Obviously-fake address so it's never confused with a real wallet.
 const DEV_WALLET = "0xDEV000000000000000000000000000000000DEV";
@@ -33,19 +31,10 @@ export default function App() {
   const [walletAddress, setWalletAddress] = useState(null);
   const [isDevSession, setIsDevSession] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
+  const [authError, setAuthError] = useState(null);
 
   useEffect(() => {
-    console.log("[DEBUG] App mount, window.location.href =", window.location.href);
-    console.log("[DEBUG] App mount, window.location.hash =", window.location.hash);
-    console.log("[DEBUG] VITE_MAGIC_PUBLISHABLE_KEY defined?", Boolean(import.meta.env.VITE_MAGIC_PUBLISHABLE_KEY));
     (async () => {
-      const fromRedirect = await handleOAuthRedirect();
-      console.log("[DEBUG] handleOAuthRedirect() resolved with:", fromRedirect);
-      if (fromRedirect) {
-        setWalletAddress(fromRedirect);
-        setAuthLoading(false);
-        return;
-      }
       const existing = await getExistingSession();
       console.log("[DEBUG] getExistingSession() resolved with:", existing);
       if (existing) setWalletAddress(existing);
@@ -53,12 +42,23 @@ export default function App() {
     })();
   }, []);
 
-  const handleLogin = async () => {
+  const handleLogin = async (email) => {
+    setAuthError(null);
     setAuthLoading(true);
     try {
-      await loginWithGoogle(); // redirects away to Google
+      console.log("[DEBUG] Sending magic link to:", email);
+      await loginWithEmail(email);
+      const address = await getExistingSession();
+      console.log("[DEBUG] Post-login getExistingSession() resolved with:", address);
+      if (address) {
+        setWalletAddress(address);
+      } else {
+        setAuthError("Login didn't complete — please try again.");
+      }
     } catch (err) {
       console.error("Login failed:", err);
+      setAuthError(err?.message ?? "Login failed — please try again.");
+    } finally {
       setAuthLoading(false);
     }
   };
@@ -99,6 +99,7 @@ export default function App() {
           onLogin={handleLogin}
           onDevBypass={handleDevBypass}
           isLoading={authLoading}
+          error={authError}
         />
       )}
     </div>
