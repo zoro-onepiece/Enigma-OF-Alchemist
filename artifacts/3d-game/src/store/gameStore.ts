@@ -39,6 +39,12 @@ interface GameStore {
   xp: number;
   level: number;
 
+  // Progress
+  // Single source of truth for score. Essences are intentionally NOT a
+  // separate field — they're derived from puzzle.solved.size wherever
+  // needed (see Scene.tsx), so the two can never drift out of sync.
+  score: number;
+
   // World
   monsters: Monster[];
   puzzle: PuzzleState;
@@ -50,6 +56,7 @@ interface GameStore {
   damagePlayer: (amount: number) => void;
   healPlayer: (amount: number) => void;
   gainXP: (amount: number) => void;
+  addScore: (amount: number) => void;
   killMonster: (id: string) => void;
   openPuzzle: (id: string) => void;
   closePuzzle: () => void;
@@ -66,6 +73,7 @@ export const useGameStore = create<GameStore>((set) => ({
   playerMaxMana: 80,
   xp: 0,
   level: 1,
+  score: 340,
   monsters: [],
   puzzle: { activeId: null, solved: new Set() },
   phase: "menu",
@@ -92,6 +100,8 @@ export const useGameStore = create<GameStore>((set) => ({
         : { xp: newXp };
     }),
 
+  addScore: (amount) => set((s) => ({ score: s.score + amount })),
+
   killMonster: (id) =>
     set((s) => ({
       monsters: s.monsters.filter((m) => m.id !== id),
@@ -107,7 +117,11 @@ export const useGameStore = create<GameStore>((set) => ({
     set((s) => {
       const solved = new Set(s.puzzle.solved);
       solved.add(id);
-      return { puzzle: { activeId: null, solved }, phase: "exploring" };
+      return {
+        puzzle: { activeId: null, solved },
+        phase: "exploring",
+        score: s.score + 100,
+      };
     }),
 
   openInventory: () => set({ inventoryOpen: true, phase: "inventory" }),

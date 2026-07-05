@@ -6,6 +6,8 @@ import Lighting, { SUN_POSITION } from "./Lighting";
 import GameEnvironment from "./environment/GameEnvironment";
 import Player, { playerKeyboardMap } from "../3d/Player";
 import GameHUD from "../hud/GameHUD";
+import PuzzleModal from "../ui/PuzzleModal";
+import { useGameStore } from "../../store/gameStore";
 
 // Shared daytime sky color — used for the scene background, fog, and (via
 // Lighting.tsx's SUN_POSITION export) kept visually consistent with the sun
@@ -68,8 +70,21 @@ export default function Scene({
   onConnectWallet: onConnectWalletProp,
 }: SceneProps) {
   const [health] = useState(72);
-  const [score] = useState(340);
-  const [essences] = useState(3);
+  // Single source of truth: score lives in gameStore (Phase 1). Essences are
+  // derived (not stored separately) from puzzle.solved.size so they can
+  // never drift out of sync with which puzzles are actually solved, and are
+  // capped at 4 to match GameHUD's fixed 4-slot essence tray.
+  const score = useGameStore((s) => s.score);
+  const essences = useGameStore((s) => Math.min(4, s.puzzle.solved.size));
+
+  // Phase 3: rune-sequence puzzle modal — mounted only while phase==='puzzle'
+  // and there's an active puzzle id. closePuzzle/solvePuzzle are the only
+  // gameStore actions the modal needs; it never touches Player.tsx.
+  const gamePhase = useGameStore((s) => s.phase);
+  const activePuzzleId = useGameStore((s) => s.puzzle.activeId);
+  const closePuzzle = useGameStore((s) => s.closePuzzle);
+  const solvePuzzle = useGameStore((s) => s.solvePuzzle);
+
   const [internalWalletAddress, setInternalWalletAddress] = useState<string | null>(null);
 
   const handleConnectWallet = () => {
@@ -144,6 +159,18 @@ export default function Scene({
         walletAddress={walletAddress as never}
         onConnectWallet={onConnectWallet}
       />
+
+      {/* ── Rune puzzle modal (Phase 3) ──────────────────────────────────────
+          Mounted only while a puzzle is active. onSolved wires straight to
+          gameStore.solvePuzzle (which awards +100 score and marks the
+          puzzle solved), onClose wires to gameStore.closePuzzle. */}
+      {gamePhase === "puzzle" && activePuzzleId && (
+        <PuzzleModal
+          puzzleId={activePuzzleId}
+          onClose={closePuzzle}
+          onSolved={solvePuzzle}
+        />
+      )}
 
       {/* ── Controls hint overlay ─────────────────────────────────────────── */}
       <div className="absolute bottom-5 left-1/2 -translate-x-1/2 flex items-center gap-3 pointer-events-none select-none">

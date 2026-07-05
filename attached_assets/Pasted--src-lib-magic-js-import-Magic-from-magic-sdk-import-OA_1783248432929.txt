@@ -1,0 +1,108 @@
+// src/lib/magic.js
+import { Magic } from "magic-sdk";
+import { OAuthExtension } from "@magic-ext/oauth2";
+
+const ARBITRUM_SEPOLIA = {
+  rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",
+  chainId: 421614,
+};
+
+export const magic = new Magic(import.meta.env.VITE_MAGIC_PUBLISHABLE_KEY, {
+  network: ARBITRUM_SEPOLIA,
+  extensions: [new OAuthExtension()],
+});
+
+export async function loginWithGoogle() {
+  // Use the proper redirect flow
+  await magic.oauth2.loginWithRedirect({
+    provider: "google",
+    redirectURI: window.location.origin,
+    // Important: set this to prevent iframe issues
+    login_hint: "google",
+  });
+}
+
+let redirectPromise = null;
+
+export function handleOAuthRedirect() {
+  if (redirectPromise) return redirectPromise;
+
+  redirectPromise = (async () => {
+    // Check if we're actually coming back from OAuth
+    const params = new URLSearchParams(window.location.search);
+    const hasMagicParams = params.has("magic_oauth_request_id") || 
+                          params.has("magic_credential") || 
+                          params.has("provider") ||
+                          (params.has("state") && params.has("code"));
+
+    if (!hasMagicParams) {
+      console.log("[magic] No OAuth params found, skipping redirect handling");
+      return null;
+    }
+
+    try {
+      console.log("[magic] Processing OAuth redirect...");
+      const result = await magic.oauth2.getRedirectResult();
+      console.log("[magic] getRedirectResult successful:", result);
+      
+      // Clear URL params
+      window.history.replaceState({}, "", window.location.pathname);
+      
+      // Get the user's wallet address
+      const address = result?.magic?.userMetadata?.publicAddress || 
+                     result?.oauth?.userMetadata?.publicAddress || 
+                     null;
+                     
+      if (!address) {
+        console.warn("[magic] No address found in redirect result");
+        return null;
+      }
+      
+      return address;
+    } catch (err) {
+      console.error("[magic] getRedirectResult failed:", err);
+      
+      // Rescue: check if session exists anyway
+      try {
+        const loggedIn = await magic.user.isLoggedIn();
+        if (loggedIn) {
+          const info = await magic.user.getInfo();
+          console.log("[magic] Rescue - found existing session:", info.publicAddress);
+          return info.publicAddress || null;
+        }
+      } catch (rescueErr) {
+        console.error("[magic] Rescue failed:", rescueErr);
+      }
+      
+      return null;
+    }
+  })();
+
+  return redirectPromise;
+}
+
+export async function getExistingSession() {
+  try {
+    const loggedIn = await magic.user.isLoggedIn();
+    if (!loggedIn) {
+      console.log("[magic] No existing session found");
+      return null;
+    }
+    
+    const info = await magic.user.getInfo();
+    console.log("[magic] Found existing session for:", info.publicAddress);
+    return info.publicAddress || null;
+  } catch (err) {
+    console.error("[magic] getExistingSession error:", err);
+    return null;
+  }
+}
+
+export async function logout() {
+  try {
+    await magic.user.logout();
+    console.log("[magic] Logout successful");
+  } catch (err) {
+    console.error("[magic] Logout failed:", err);
+  }
+}
