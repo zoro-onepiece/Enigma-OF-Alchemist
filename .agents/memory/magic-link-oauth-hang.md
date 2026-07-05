@@ -34,3 +34,16 @@ blank-screen gate, hiding the button/spinner behind an empty screen — this
 looks exactly like a hang/bounce bug to e2e testing even though the
 underlying auth logic is correct. Keep bootstrap-gating state and
 button-loading state as two separate flags.
+
+**Auth wiring lives in App.jsx + lib/magic.ts directly, not a
+Provider/hook layer.** In "Enigma of Alchemist" (artifacts/3d-game), the
+Google/email login flow and wallet address are owned as plain React state
+in `App.jsx`, calling exported functions from `src/lib/magic.ts` directly
+— there is no `MagicProvider`/`useMagic()` context layer. The wallet
+address is passed down as a prop through `Scene.tsx` into
+`components/hud/GameHUD.tsx` for the HUD badge. `src/components/web3/`
+is a vestigial stub folder (just a comment block) describing an
+unbuilt Provider/hook structure — don't assume files named
+`MagicProvider.tsx`/`useWallet.ts`/`LoginButton.tsx` exist just because
+older task descriptions or comments reference them; verify against the
+current tree first.
