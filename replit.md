@@ -1,6 +1,6 @@
-# [Project name]
+# Enigma of Alchemist
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A 3D Web3 puzzle-adventure game where players explore a procedural Japanese temple garden, solve four alchemical mini-games, and collect on-chain rewards on Arbitrum Sepolia.
 
 ## Run & Operate
 
