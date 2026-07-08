@@ -12,7 +12,18 @@ export const magic = new Magic(import.meta.env.VITE_MAGIC_PUBLISHABLE_KEY, {
   extensions: [new OAuthExtension()],
 });
 
-// ✅ Email OTP / Magic Link
+// Helper: safely extract the wallet address from Magic's user metadata,
+// regardless of whether it's nested under wallets.ethereum or top-level
+// (defensive against SDK version differences).
+function extractAddress(userMetadata) {
+  if (!userMetadata) return null;
+  return (
+    userMetadata?.wallets?.ethereum?.publicAddress ??
+    userMetadata?.publicAddress ??
+    null
+  );
+}
+
 export async function loginWithEmail(email) {
   console.log("[magic] Sending Magic Link to:", email);
   await magic.auth.loginWithMagicLink({
@@ -35,8 +46,9 @@ export async function getExistingSession() {
     console.log("[magic] isLoggedIn():", isLoggedIn);
     if (isLoggedIn) {
       const info = await magic.user.getInfo();
-      console.log("[magic] getInfo() result:", JSON.stringify(info, null, 2));
-      return info.publicAddress;
+      const address = extractAddress(info);
+      console.log("[magic] getInfo() -> address:", address);
+      return address;
     }
   } catch (e) {
     console.error("[magic] Session check error:", e);
@@ -57,22 +69,14 @@ export async function handleOAuthRedirect() {
   console.log("[magic] Processing OAuth redirect...");
   try {
     const result = await magic.oauth2.getRedirectResult();
-
-    // 🔍 DEBUG: yeh line poora result object dikhayegi
-    console.log("[magic] RAW OAuth result:", JSON.stringify(result, null, 2));
-
     window.history.replaceState({}, "", window.location.pathname);
 
-    if (result?.magic?.userMetadata?.publicAddress) {
-      console.log(
-        "[magic] Got address from getRedirectResult:",
-        result.magic.userMetadata.publicAddress,
-      );
-      return result.magic.userMetadata.publicAddress;
+    const address = extractAddress(result?.magic?.userMetadata);
+    if (address) {
+      console.log("[magic] Got address from getRedirectResult:", address);
+      return address;
     } else {
-      console.warn(
-        "[magic] getRedirectResult succeeded but publicAddress missing. Full result above ⬆️",
-      );
+      console.warn("[magic] getRedirectResult succeeded but no address found.");
     }
   } catch (e) {
     console.error("[magic] getRedirectResult FAILED:", e);
