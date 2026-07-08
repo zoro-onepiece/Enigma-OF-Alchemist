@@ -29,7 +29,7 @@ export async function loginWithEmail(email) {
   await magic.auth.loginWithMagicLink({
     email,
     redirectURI: window.location.origin,
-    showUI: false,
+    showUI: true,
   });
 }
 
