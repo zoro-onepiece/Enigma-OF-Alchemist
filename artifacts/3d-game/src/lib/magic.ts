@@ -17,6 +17,7 @@ export async function loginWithEmail(email) {
   await magic.auth.loginWithMagicLink({
     email,
     redirectURI: window.location.origin, // MUST match your vercel domain
+    showUI: true, // <-- Agar showUI true hai aur domain allowlist me nahi, toh 401 aata hai
   });
 }
 
