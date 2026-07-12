@@ -5,6 +5,7 @@ import * as THREE from "three";
 import Lighting, { SUN_POSITION } from "./Lighting";
 import GameEnvironment from "./environment/GameEnvironment";
 import Player, { playerKeyboardMap } from "../3d/Player";
+import Merchant from "../3d/Merchant"; // <--- YAHAN IMPORT ADD KAREIN
 import GameHUD from "../hud/GameHUD";
 import AudioMuteToggle from "../hud/AudioMuteToggle";
 import FinaleOverlay from "../hud/FinaleOverlay";
@@ -185,6 +186,8 @@ export default function Scene({
             models are loaded here. */}
         <GameEnvironment />
 
+        {/* ── Merchant ──────────────────────────────────────────────────── */}
+        <Merchant />   {/* <--- YAHAN MERCHANT ADD KAREIN */}
         {/* ── Player ────────────────────────────────────────────────────── */}
         <Player />
       </Canvas>
@@ -225,6 +228,7 @@ export default function Scene({
           puzzleId={activePuzzleId}
           onClose={closePuzzle}
           onSolved={solvePuzzle}
+          solvedCountBefore={essences}
         />
       )}
 

@@ -56,6 +56,12 @@ interface GameStore {
   // puzzle/phase state above — doesn't change any existing field's meaning.
   finaleClaimed: boolean;
 
+  // Intro story: whether the one-time opening narration has been shown
+  // this session. In-memory only (no persist middleware here, same as the
+  // rest of this store) — resets on reload, which is fine since it should
+  // reappear once per login session, not survive across page refreshes.
+  hasSeenIntro: boolean;
+
   // Actions
   setGameState: (patch: Partial<GameStore>) => void;
   damagePlayer: (amount: number) => void;
@@ -69,6 +75,7 @@ interface GameStore {
   openInventory: () => void;
   closeInventory: () => void;
   claimFinale: () => void;
+  setHasSeenIntro: () => void;
 }
 
 export const useGameStore = create<GameStore>((set) => ({
@@ -85,6 +92,7 @@ export const useGameStore = create<GameStore>((set) => ({
   phase: "menu",
   inventoryOpen: false,
   finaleClaimed: false,
+  hasSeenIntro: false,
 
   // ─── Actions ─────────────────────────────────────────────────────────────────
   setGameState: (patch) => set(patch),
@@ -135,4 +143,6 @@ export const useGameStore = create<GameStore>((set) => ({
   closeInventory: () => set({ inventoryOpen: false, phase: "exploring" }),
 
   claimFinale: () => set({ finaleClaimed: true }),
+
+  setHasSeenIntro: () => set({ hasSeenIntro: true }),
 }));

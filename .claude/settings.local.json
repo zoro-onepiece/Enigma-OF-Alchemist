@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm --filter @workspace/3d-game run typecheck)"
+    ]
+  }
+}

@@ -67,12 +67,28 @@ export default function FinaleOverlay({
         ))}
       </div>
 
-      <div className="relative mx-4 max-w-md rounded-2xl border-2 border-amber-400/70 bg-gradient-to-b from-stone-900 to-emerald-950 p-8 text-center shadow-[0_0_60px_rgba(251,191,36,0.35)]">
+      <div className="relative mx-4 max-w-lg rounded-2xl border-2 border-amber-400/70 bg-gradient-to-b from-stone-900 to-emerald-950 p-8 text-center shadow-[0_0_60px_rgba(251,191,36,0.35)]">
         <div className="mb-3 text-5xl">🏆</div>
         <h1 className="mb-2 text-xl font-bold tracking-wide text-amber-200">
           The Enigma is Solved!
         </h1>
         <p className="mb-6 text-sm text-amber-100/80">All Essences United</p>
+
+        <div
+          className="mb-6 space-y-3 text-base leading-relaxed text-amber-100/95 md:text-lg"
+          style={{ animation: "finale-reveal-fade 1.4s ease-out" }}
+        >
+          <p>
+            The shrines never sought a stranger. They sought an heir.
+          </p>
+          <p>
+            As the final seal breaks, the island remembers what it always knew —{" "}
+            <span className="font-semibold text-amber-300">you are her.</span>
+          </p>
+          <p className="font-semibold text-amber-200">
+            The Legendary Alchemist has returned, and the garden is yours once more.
+          </p>
+        </div>
 
         <div className="mb-6 flex justify-center gap-8">
           <div>
@@ -83,6 +99,10 @@ export default function FinaleOverlay({
             <div className="text-2xl font-bold text-amber-300">{score}</div>
             <div className="text-[10px] uppercase tracking-widest text-white/40">Score</div>
           </div>
+        </div>
+
+        <div className="mb-6 inline-block rounded-lg border border-amber-400/40 bg-amber-500/5 px-4 py-2 text-[11px] uppercase tracking-widest text-amber-300/90">
+          Reward: Legendary Alchemist — Verified
         </div>
 
         {onDismiss && (
@@ -105,6 +125,10 @@ export default function FinaleOverlay({
         }
         .finale-spark {
           animation: finale-spark-fly 1.1s ease-out forwards;
+        }
+        @keyframes finale-reveal-fade {
+          0% { opacity: 0; transform: translateY(10px); }
+          100% { opacity: 1; transform: translateY(0); }
         }
       `}</style>
     </div>

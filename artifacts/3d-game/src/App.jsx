@@ -23,6 +23,8 @@
 import React, { useEffect, useState } from "react";
 import Scene from "@/components/scene/Scene";
 import MainMenu from "@/MainMenu";
+import IntroStory from "@/components/story/IntroStory";
+import { useGameStore } from "@/store/gameStore";
 import {
   loginWithEmail,
   loginWithGoogle,
@@ -118,6 +120,8 @@ export default function App() {
   };
 
   const isLoggedIn = Boolean(walletAddress);
+  const hasSeenIntro = useGameStore((s) => s.hasSeenIntro);
+  const setHasSeenIntro = useGameStore((s) => s.setHasSeenIntro);
 
   // While the initial redirect/session check is still resolving, render
   // nothing but the backdrop rather than the login menu — otherwise the
@@ -131,7 +135,9 @@ export default function App() {
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-slate-950">
-      {isLoggedIn && (
+      {isLoggedIn && !hasSeenIntro && <IntroStory onBegin={setHasSeenIntro} />}
+
+      {isLoggedIn && hasSeenIntro && (
         <>
           <Scene walletAddress={walletAddress} onConnectWallet={handleLogout} />
 

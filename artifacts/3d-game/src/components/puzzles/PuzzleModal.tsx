@@ -24,7 +24,20 @@ interface PuzzleModalProps {
   puzzleId: string;
   onClose: () => void;
   onSolved: (puzzleId: string) => void;
+  // How many puzzles were already solved before this one (0-3) — used to
+  // pick the ordinal (1st..4th) flavor line below, independent of which
+  // specific puzzle this is, since players can solve them in any order.
+  solvedCountBefore?: number;
 }
+
+// Ordinal flavor text shown under "Essence Conjured!" — indexed by how many
+// puzzles were solved before this one (0 = this is the 1st solve, etc.).
+const ORDINAL_FLAVOR_TEXT = [
+  "A fragment of forgotten power stirs within you...",
+  "The garden itself seems to recognize you now.",
+  "Something ancient is remembering your name.",
+  "The final seal breaks. You feel... complete.",
+];
 
 interface PuzzleConfig {
   name: string;
@@ -62,10 +75,17 @@ function getPuzzleConfig(puzzleId: string): PuzzleConfig {
   return PUZZLE_CONFIG[puzzleId] ?? PUZZLE_CONFIG["puzzle-1"];
 }
 
-export default function PuzzleModal({ puzzleId, onClose, onSolved }: PuzzleModalProps) {
+export default function PuzzleModal({
+  puzzleId,
+  onClose,
+  onSolved,
+  solvedCountBefore = 0,
+}: PuzzleModalProps) {
   const [victorious, setVictorious] = useState(false);
   const config = getPuzzleConfig(puzzleId);
   const { Component } = config;
+  const flavorText =
+    ORDINAL_FLAVOR_TEXT[Math.min(solvedCountBefore, ORDINAL_FLAVOR_TEXT.length - 1)];
 
   const handleWin = () => {
     // eslint-disable-next-line no-console
@@ -148,7 +168,8 @@ export default function PuzzleModal({ puzzleId, onClose, onSolved }: PuzzleModal
             <p className="relative text-amber-300 font-semibold text-lg mb-1">
               Essence Conjured!
             </p>
-            <p className="relative text-white/60 text-sm italic mb-6">{config.name} solved</p>
+            <p className="relative text-white/60 text-sm italic mb-1">{config.name} solved</p>
+            <p className="relative text-emerald-300/90 text-sm italic mb-6">{flavorText}</p>
             <button
               onClick={handleContinue}
               className="relative rounded-lg border border-emerald-600/70 bg-emerald-900/40 px-6 py-2 text-sm font-semibold uppercase tracking-widest text-emerald-300 transition-colors hover:bg-emerald-900/60"
