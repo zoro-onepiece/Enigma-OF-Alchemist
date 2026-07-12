@@ -19,6 +19,14 @@ import RuneMemoryGame from "./RuneMemoryGame";
 import AlchemyMatch3Game from "./AlchemyMatch3Game";
 import ElementalSudoku from "./games/ElementalSudoku";
 import SigilPairsGame from "./SigilPairsGame";
+import { useGameStore } from "../../store/gameStore";
+
+// HP cost per lost mini-game attempt (10 losses = death at 100 max HP).
+// Single source of truth for all 4 games — each calls its own onLose() at
+// its own fail/retry transition (see RuneMemoryGame/SigilPairsGame/
+// ElementalSudoku/AlchemyMatch3Game), but the actual damage amount is only
+// ever applied here, in handleLose below.
+const PUZZLE_FAIL_DAMAGE = 10;
 
 interface PuzzleModalProps {
   puzzleId: string;
@@ -42,7 +50,7 @@ const ORDINAL_FLAVOR_TEXT = [
 interface PuzzleConfig {
   name: string;
   subtitle: string;
-  Component: (props: { onWin: () => void }) => ReactElement;
+  Component: (props: { onWin: () => void; onLose?: () => void }) => ReactElement;
 }
 
 // Deterministic id → mini-game mapping. Any puzzle id not in this map
@@ -86,6 +94,7 @@ export default function PuzzleModal({
   const { Component } = config;
   const flavorText =
     ORDINAL_FLAVOR_TEXT[Math.min(solvedCountBefore, ORDINAL_FLAVOR_TEXT.length - 1)];
+  const damagePlayer = useGameStore((s) => s.damagePlayer);
 
   const handleWin = () => {
     // eslint-disable-next-line no-console
@@ -95,6 +104,15 @@ export default function PuzzleModal({
 
   const handleContinue = () => {
     onSolved(puzzleId);
+  };
+
+  // Costs HP on a failed mini-game attempt — fires gameStore.damagePlayer,
+  // which clamps HP at 0 and flips phase to 'dead' in the same action if
+  // this was the fatal blow (see gameStore.ts). The mini-game itself keeps
+  // its own local retry UI (e.g. Alchemy Match-3's internal "Restart"
+  // button) — this is purely the world-state consequence layered on top.
+  const handleLose = () => {
+    damagePlayer(PUZZLE_FAIL_DAMAGE);
   };
 
   return (
@@ -128,16 +146,16 @@ export default function PuzzleModal({
         }
       `}</style>
 
-      <div className="relative w-full max-w-md mx-4 rounded-2xl border-2 border-amber-700/60 bg-gradient-to-b from-stone-900 to-stone-950 p-8 shadow-2xl shadow-black/60 font-serif">
+      <div className="relative w-full max-w-md mx-3 sm:mx-4 rounded-2xl border-2 border-amber-700/60 bg-gradient-to-b from-stone-900 to-stone-950 p-4 sm:p-8 shadow-2xl shadow-black/60 font-serif max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-4 sm:mb-6">
           <div>
-            <h2 className="text-amber-400 font-semibold text-lg tracking-wide">{config.name}</h2>
-            <p className="text-white/40 text-xs italic">{config.subtitle}</p>
+            <h2 className="text-amber-400 font-semibold text-base sm:text-lg tracking-wide">{config.name}</h2>
+            <p className="text-white/40 text-[11px] sm:text-xs italic">{config.subtitle}</p>
           </div>
           <button
             onClick={onClose}
-            className="text-white/30 hover:text-white/70 transition-colors text-xl leading-none"
+            className="flex h-11 w-11 shrink-0 items-center justify-center text-white/30 hover:text-white/70 transition-colors text-xl leading-none"
             aria-label="Close puzzle"
           >
             ×
@@ -178,7 +196,7 @@ export default function PuzzleModal({
             </button>
           </div>
         ) : (
-          <Component onWin={handleWin} />
+          <Component onWin={handleWin} onLose={handleLose} />
         )}
       </div>
     </div>

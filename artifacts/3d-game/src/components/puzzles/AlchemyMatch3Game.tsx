@@ -14,6 +14,7 @@ import { usePuzzleSound } from "./usePuzzleSound";
 
 interface AlchemyMatch3GameProps {
   onWin: () => void;
+  onLose?: () => void;
 }
 
 const GRID_SIZE = 6;
@@ -105,7 +106,7 @@ function isAdjacent(a: { r: number; c: number }, b: { r: number; c: number }): b
   return Math.abs(a.r - b.r) + Math.abs(a.c - b.c) === 1;
 }
 
-export default function AlchemyMatch3Game({ onWin }: AlchemyMatch3GameProps) {
+export default function AlchemyMatch3Game({ onWin, onLose }: AlchemyMatch3GameProps) {
   const [grid, setGrid] = useState<Grid>(() => makeInitialGrid());
   const [selected, setSelected] = useState<{ r: number; c: number } | null>(null);
   const [movesLeft, setMovesLeft] = useState(MAX_MOVES);
@@ -144,6 +145,7 @@ export default function AlchemyMatch3Game({ onWin }: AlchemyMatch3GameProps) {
         } else if (movesRemainingAfterThisMove <= 0) {
           playLose();
           setStatus("lost");
+          onLose?.();
         }
         return;
       }

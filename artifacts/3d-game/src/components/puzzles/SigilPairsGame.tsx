@@ -11,6 +11,7 @@ import { usePuzzleSound } from "./usePuzzleSound";
 
 interface SigilPairsGameProps {
   onWin: () => void;
+  onLose?: () => void;
 }
 
 const SYMBOLS = ["🜁", "🜂", "🜃", "🜄", "🜚", "☿"];
@@ -36,14 +37,21 @@ function makeDeck(): Card[] {
   return pairSymbols.map((symbol, id) => ({ id, symbol, matched: false }));
 }
 
-export default function SigilPairsGame({ onWin }: SigilPairsGameProps) {
+export default function SigilPairsGame({ onWin, onLose }: SigilPairsGameProps) {
   const [cards, setCards] = useState<Card[]>(() => makeDeck());
   const [flippedIds, setFlippedIds] = useState<number[]>([]);
   const [flipsUsed, setFlipsUsed] = useState(0);
   const [busy, setBusy] = useState(false);
   const { playFlip, playMatch, playWrong, playWin } = usePuzzleSound();
 
+  // Hitting the flip limit is this game's fail/retry transition — like
+  // Alchemy Match-3 running out of moves, it discards all progress
+  // (matched pairs included) and starts over on a fresh board. A single
+  // mismatch just flips two cards back with no cost, same as Match-3's
+  // freely-reverted invalid swap — only the "attempt failed" reshuffle
+  // costs HP.
   const reshuffle = () => {
+    onLose?.();
     setCards(makeDeck());
     setFlippedIds([]);
     setFlipsUsed(0);

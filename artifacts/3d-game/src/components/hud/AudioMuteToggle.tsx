@@ -18,7 +18,7 @@ export default function AudioMuteToggle() {
     <button
       onClick={toggleMute}
       title={muted ? "Unmute game audio" : "Mute game audio"}
-      className="pointer-events-auto absolute left-4 top-4 z-[60] flex h-[38px] w-[38px] items-center justify-center rounded-full border border-white/20 bg-black/50 text-base text-white/90 backdrop-blur-sm transition-all hover:scale-105 hover:bg-black/70 active:scale-95"
+      className="pointer-events-auto absolute left-2 top-2 z-[60] flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-black/50 text-base text-white/90 backdrop-blur-sm transition-all hover:scale-105 hover:bg-black/70 active:scale-95 sm:left-4 sm:top-4"
     >
       {muted ? "🔇" : "🔊"}
     </button>

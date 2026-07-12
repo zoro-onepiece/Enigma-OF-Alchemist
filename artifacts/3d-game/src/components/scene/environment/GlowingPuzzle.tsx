@@ -5,6 +5,7 @@ import * as THREE from "three";
 import { PLAYER_WORLD_POS } from "../../3d/Player";
 import { audioFileExists } from "../../../audio/sounds";
 import { useSoundStore } from "../../../store/soundStore";
+import { useGameStore } from "../../../store/gameStore";
 import SparkleFountain from "../effects/SparkleFountain";
 
 const HUM_PATH = "/audio/hum.mp3";
@@ -83,7 +84,10 @@ export interface GlowingPuzzleProps {
   onActivate?: (id: string) => void;
 }
 
-const SOLVED_COLOR = "#facc15";
+// Exported for MinimapOverlay.tsx (Task D) so its pedestal dots reuse the
+// exact same solved/unsolved colors these pedestals actually render with.
+export const SOLVED_COLOR = "#facc15";
+export const DEFAULT_PUZZLE_COLOR = "#a78bfa";
 const PROXIMITY_RANGE = 3.5;
 
 interface ProximityEntry {
@@ -100,6 +104,7 @@ function ensureGlobalKeyListener() {
   globalKeyListenerAttached = true;
   window.addEventListener("keydown", (e) => {
     if (e.key.toLowerCase() !== "e") return;
+    if (useGameStore.getState().phase === "dead") return;
     let nearest: ProximityEntry | null = null;
     for (const entry of proximityRegistry.values()) {
       if (entry.solved) continue;
@@ -113,7 +118,7 @@ function ensureGlobalKeyListener() {
 export default function GlowingPuzzle({
   id,
   position,
-  color = "#a78bfa",
+  color = DEFAULT_PUZZLE_COLOR,
   isSolved = false,
   onActivate,
 }: GlowingPuzzleProps) {

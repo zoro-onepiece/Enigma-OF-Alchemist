@@ -4,15 +4,20 @@ import { Environment, Sky, Clouds, Cloud, Stats, KeyboardControls } from "@react
 import * as THREE from "three";
 import Lighting, { SUN_POSITION } from "./Lighting";
 import GameEnvironment from "./environment/GameEnvironment";
-import Player, { playerKeyboardMap } from "../3d/Player";
+import Player, { playerKeyboardMap, teleportPlayerToSpawn } from "../3d/Player";
 import Merchant from "../3d/Merchant"; // <--- YAHAN IMPORT ADD KAREIN
 import GameHUD from "../hud/GameHUD";
 import AudioMuteToggle from "../hud/AudioMuteToggle";
 import FinaleOverlay from "../hud/FinaleOverlay";
+import MobileControls from "../hud/MobileControls";
+import MinimapOverlay from "../hud/MinimapOverlay";
 import PuzzleModal from "../puzzles/PuzzleModal";
+import SprintBreathSound from "../story/SprintBreathSound";
+import GameOverOverlay from "../story/GameOverOverlay";
 import { useGameStore } from "../../store/gameStore";
 import { ISLAND_SCALE } from "../../lib/worldCollision";
 import { initMusicOnFirstInteraction, playSfx } from "../../audio/sounds";
+import { useShowTouchControls } from "../../hooks/use-mobile";
 
 // Shared daytime sky color — used for the scene background, fog, and (via
 // Lighting.tsx's SUN_POSITION export) kept visually consistent with the sun
@@ -78,7 +83,11 @@ export default function Scene({
   onConnectWallet: onConnectWalletProp,
   onEnigmaComplete,
 }: SceneProps) {
-  const [health] = useState(72);
+  // Real player HP/max HP from the store (Task: death + restart) — replaces
+  // the old local `useState(72)` placeholder, which never actually moved
+  // and so never reflected damagePlayer()'s effect on the health bar.
+  const playerHp = useGameStore((s) => s.playerHp);
+  const playerMaxHp = useGameStore((s) => s.playerMaxHp);
   // Single source of truth: score lives in gameStore (Phase 1). Essences are
   // derived (not stored separately) from puzzle.solved.size so they can
   // never drift out of sync with which puzzles are actually solved, and are
@@ -95,6 +104,42 @@ export default function Scene({
   const solvePuzzle = useGameStore((s) => s.solvePuzzle);
   const finaleClaimed = useGameStore((s) => s.finaleClaimed);
   const [finaleOverlayDismissed, setFinaleOverlayDismissed] = useState(false);
+
+  // Task D: puzzle-location map — desktop toggles with "M", mobile taps the
+  // icon button GameHUD renders (both drive this same bit of state, so
+  // there's exactly one toggle path regardless of input device).
+  const [mapOpen, setMapOpen] = useState(false);
+  const toggleMap = () => setMapOpen((open) => !open);
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() === "m") toggleMap();
+    };
+    // Capture phase, not bubble — PuzzleModal.tsx's root div deliberately
+    // calls onKeyDown={(e) => e.stopPropagation()} on every keypress while a
+    // puzzle is open (so puzzle-game keys never leak into the 3D scene's
+    // WASD controls). Since React attaches its synthetic listeners at the
+    // root container and stopPropagation() there calls the underlying
+    // native stopPropagation(), a bubble-phase `window` listener never sees
+    // the event once focus is inside the modal — the map toggle silently
+    // stopped working the moment a player had clicked into a puzzle.
+    // Capture-phase listeners run top-down BEFORE that bubble-phase
+    // stopPropagation() ever fires, so this is immune to it.
+    window.addEventListener("keydown", handler, { capture: true });
+    return () => window.removeEventListener("keydown", handler, { capture: true });
+  }, []);
+
+  // Task B: on-screen joystick + action button replace the keyboard hint
+  // strip on touch/narrow-viewport devices.
+  const showTouchControls = useShowTouchControls();
+
+  // Death + restart: "Try Again" resets the store AND teleports the player
+  // back to spawn in the same click — no extra reactive plumbing needed
+  // since this only ever runs from a direct user click on the overlay.
+  const restartRun = useGameStore((s) => s.restartRun);
+  const handleRestart = () => {
+    restartRun();
+    teleportPlayerToSpawn();
+  };
 
   // Arm the "start music after first interaction" listener once.
   useEffect(() => {
@@ -135,7 +180,13 @@ export default function Scene({
 
   return (
     <div className="w-full h-full relative">
-      <KeyboardControls map={playerKeyboardMap}>
+      {/* Freeze WASD/sprint input while dead by handing KeyboardControls an
+          empty binding map — drei rebuilds its internal store/listeners off
+          the `map` prop, so no keys register at all (getKeys() returns all-
+          false) until phase leaves 'dead'. Keeps Player.tsx's own movement/
+          animation logic completely untouched; the gate lives here instead,
+          "before" Player.tsx in the data flow. */}
+      <KeyboardControls map={gamePhase === "dead" ? [] : playerKeyboardMap}>
       <Canvas
         shadows
         dpr={[1, 1.5]}
@@ -191,22 +242,38 @@ export default function Scene({
         {/* ── Player ────────────────────────────────────────────────────── */}
         <Player />
       </Canvas>
+
+      {/* ── Sprint breathing SFX — surrounding wiring only, reads the same
+          KeyboardControls context Player.tsx reads; Player.tsx's movement/
+          speed logic itself is untouched. ────────────────────────────────── */}
+      <SprintBreathSound />
       </KeyboardControls>
 
       {/* ── Alchemist HUD overlay ────────────────────────────────────────── */}
       <GameHUD
-        health={health}
-        maxHealth={100}
+        health={playerHp}
+        maxHealth={playerMaxHp}
         score={score}
         essences={essences}
         walletAddress={walletAddress as never}
         onConnectWallet={onConnectWallet}
+        mapOpen={mapOpen}
+        onToggleMap={toggleMap}
+        mobileControlsActive={showTouchControls}
       />
 
       {/* ── Standalone audio mute toggle — separate component from GameHUD
           per the "don't touch GameHUD internals" rule, shares the same
           global mute flag as GameHUD's own speaker button. ─────────────── */}
       <AudioMuteToggle />
+
+      {/* ── Task D: puzzle-location map overlay — toggled by "M" (desktop)
+          or GameHUD's map icon (both/mobile). ──────────────────────────── */}
+      {mapOpen && <MinimapOverlay onClose={() => setMapOpen(false)} />}
+
+      {/* ── Task B: on-screen joystick + interact button, touch/narrow-
+          viewport only — replaces the keyboard hint strip below. ────────── */}
+      {showTouchControls && <MobileControls />}
 
       {/* ── Finale overlay (Task 3c) — shown once the treasure chest is
           claimed, until the player dismisses it. ───────────────────────── */}
@@ -218,6 +285,11 @@ export default function Scene({
           onDismiss={() => setFinaleOverlayDismissed(true)}
         />
       )}
+
+      {/* ── Game Over overlay — shown when playerHp hits 0 (phase 'dead').
+          "Try Again" fully resets the run and teleports the player back to
+          spawn; see handleRestart above. ─────────────────────────────────── */}
+      {gamePhase === "dead" && <GameOverOverlay score={score} onRestart={handleRestart} />}
 
       {/* ── Rune puzzle modal (Phase 3) ──────────────────────────────────────
           Mounted only while a puzzle is active. onSolved wires straight to
@@ -232,26 +304,30 @@ export default function Scene({
         />
       )}
 
-      {/* ── Controls hint overlay ─────────────────────────────────────────── */}
-      <div className="absolute bottom-5 left-1/2 -translate-x-1/2 flex items-center gap-3 pointer-events-none select-none">
-        {[
-          { keys: "W / ↑",   label: "Forward"    },
-          { keys: "S / ↓",   label: "Backward"   },
-          { keys: "A / ←",   label: "Strafe L"   },
-          { keys: "D / →",   label: "Strafe R"   },
-          { keys: "Mouse",   label: "Look Around"},
-        ].map(({ keys, label }) => (
-          <div
-            key={label}
-            className="flex flex-col items-center gap-0.5"
-          >
-            <kbd className="bg-white/10 border border-white/20 rounded px-2 py-0.5 text-[10px] font-mono text-purple-300">
-              {keys}
-            </kbd>
-            <span className="text-[9px] text-white/30">{label}</span>
-          </div>
-        ))}
-      </div>
+      {/* ── Controls hint overlay — desktop-only; touch devices get the
+          joystick/action button above instead. ─────────────────────────── */}
+      {!showTouchControls && (
+        <div className="absolute bottom-5 left-1/2 -translate-x-1/2 flex items-center gap-3 pointer-events-none select-none">
+          {[
+            { keys: "W / ↑",   label: "Forward"    },
+            { keys: "S / ↓",   label: "Backward"   },
+            { keys: "A / ←",   label: "Strafe L"   },
+            { keys: "D / →",   label: "Strafe R"   },
+            { keys: "Mouse",   label: "Look Around"},
+            { keys: "M",       label: "Map"        },
+          ].map(({ keys, label }) => (
+            <div
+              key={label}
+              className="flex flex-col items-center gap-0.5"
+            >
+              <kbd className="bg-white/10 border border-white/20 rounded px-2 py-0.5 text-[10px] font-mono text-purple-300">
+                {keys}
+              </kbd>
+              <span className="text-[9px] text-white/30">{label}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

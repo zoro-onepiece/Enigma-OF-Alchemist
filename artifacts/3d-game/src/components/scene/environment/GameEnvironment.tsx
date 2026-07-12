@@ -62,7 +62,10 @@ const PATH_WAYPOINTS: [number, number][] = RAW_PATH_WAYPOINTS.map(
 );
 
 const RAW_TEMPLE_POSITION: [number, number] = [0, -36];
-const TEMPLE_POSITION: [number, number, number] = [
+// Exported for MinimapOverlay.tsx (Task D) — the temple's world position is
+// the map's center reference point, same coordinate space PLAYER_WORLD_POS
+// and the puzzle placements below already live in.
+export const TEMPLE_POSITION: [number, number, number] = [
   RAW_TEMPLE_POSITION[0] * ISLAND_SCALE,
   0,
   RAW_TEMPLE_POSITION[1] * ISLAND_SCALE,
@@ -123,6 +126,17 @@ const PUZZLE_POSITIONS: [number, number][] = RAW_PUZZLE_POSITIONS.map(
   ([x, z]) => [x * ISLAND_SCALE, z * ISLAND_SCALE]
 );
 const PUZZLE_CLEAR_RADIUS = 1.8;
+
+// Exported for MinimapOverlay.tsx (Task D) — the exact id/position pairs
+// already used to place the GlowingPuzzle pedestals below, so the minimap
+// dots can never drift out of sync with where the pedestals actually are.
+// A plain module constant (not a useMemo) since it never depended on any
+// props/state to begin with — it was already effectively static.
+export const PUZZLE_PLACEMENTS: { id: string; position: [number, number, number] }[] =
+  PUZZLE_POSITIONS.map(([x, z], i) => ({
+    id: `puzzle-${i + 1}`,
+    position: [x, 0, z] as [number, number, number],
+  }));
 
 // Extra exclusion for dense ground cover (grass/flowers only) — on top of
 // the path/temple clearing, also keep a small clear radius around each
@@ -258,16 +272,9 @@ export default function GameEnvironment() {
     return trees;
   }, []);
 
-  const puzzlePlacements = useMemo(() => {
-    // Evenly spaced along the path, just off to the side so they don't
-    // block the walkable stones. Positions come from PUZZLE_POSITIONS
-    // (already scaled by ISLAND_SCALE) so puzzles move outward with the
-    // rest of the garden instead of staying at the old pre-scale spots.
-    return PUZZLE_POSITIONS.map(([x, z], i) => ({
-      id: `puzzle-${i + 1}`,
-      position: [x, 0, z] as [number, number, number],
-    }));
-  }, []);
+  // Evenly spaced along the path, just off to the side so they don't block
+  // the walkable stones — see the exported PUZZLE_PLACEMENTS constant above.
+  const puzzlePlacements = PUZZLE_PLACEMENTS;
 
   // Small potted-flower accents lining the pathway and ringing the temple
   // base — pure ground-cover decoration (no collision), so they're allowed
@@ -441,8 +448,16 @@ export default function GameEnvironment() {
         stoneCount={Math.round(26 * ISLAND_SCALE)}
       />
 
-      {/* Temple at the far end of the path */}
-      <JapaneseTemple position={TEMPLE_POSITION} />
+      {/* Temple at the far end of the path — Task C: gold glow + walk-in
+          finale trigger once all 4 essences are collected, additive
+          alongside the treasure chest's own claim trigger below (both
+          call the same gameStore.claimFinale action). */}
+      <JapaneseTemple
+        position={TEMPLE_POSITION}
+        glowActive={allEssencesCollected}
+        finaleClaimed={finaleClaimed}
+        onEnterInterior={claimFinale}
+      />
 
       {/* Potted-flower ground cover — lines the pathway and rings the
           temple base. Purely decorative (no collision). */}

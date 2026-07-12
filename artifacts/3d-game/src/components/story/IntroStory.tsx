@@ -71,25 +71,25 @@ export default function IntroStory({ onBegin }: IntroStoryProps) {
           e.stopPropagation();
           onBegin();
         }}
-        className="absolute right-6 top-6 text-[10px] uppercase tracking-[0.3em] text-stone-400 transition-colors hover:text-amber-300"
+        className="absolute right-2 top-2 flex h-11 items-center px-3 text-[9px] uppercase tracking-[0.2em] text-stone-400 transition-colors hover:text-amber-300 sm:right-6 sm:top-6 sm:text-[10px] sm:tracking-[0.3em]"
       >
         Skip
       </button>
 
-      <div className="relative flex w-full max-w-2xl flex-col items-center px-6 text-center">
-        <span className="mb-6 text-4xl text-emerald-300 drop-shadow-[0_0_14px_rgba(52,211,153,0.8)]">
+      <div className="relative flex w-full max-w-2xl flex-col items-center px-5 text-center sm:px-6">
+        <span className="mb-4 text-3xl text-emerald-300 drop-shadow-[0_0_14px_rgba(52,211,153,0.8)] sm:mb-6 sm:text-4xl">
           ⚗️
         </span>
 
         <p
           key={index}
-          className="min-h-[10rem] text-lg leading-relaxed text-amber-100/90 md:text-xl"
+          className="min-h-[8rem] text-base leading-relaxed text-amber-100/90 sm:min-h-[10rem] sm:text-lg md:text-xl"
           style={{ animation: "intro-fade-in 0.8s ease-out" }}
         >
           {PARAGRAPHS[index]}
         </p>
 
-        <div className="mt-10 flex items-center gap-2">
+        <div className="mt-6 flex items-center gap-2 sm:mt-10">
           {PARAGRAPHS.map((_, i) => (
             <span
               key={i}
@@ -105,7 +105,7 @@ export default function IntroStory({ onBegin }: IntroStoryProps) {
             e.stopPropagation();
             advance();
           }}
-          className="group relative mt-8 rounded-xl border-2 border-amber-500/90 bg-gradient-to-b from-stone-800 to-emerald-950 px-8 py-4 text-lg font-semibold tracking-widest text-amber-100 shadow-[0_0_24px_rgba(217,119,6,0.4)] transition-all hover:scale-105 hover:border-amber-300 hover:shadow-[0_0_36px_rgba(251,191,36,0.6)] active:scale-95"
+          className="group relative mt-6 rounded-xl border-2 border-amber-500/90 bg-gradient-to-b from-stone-800 to-emerald-950 px-6 py-3 text-base font-semibold tracking-widest text-amber-100 shadow-[0_0_24px_rgba(217,119,6,0.4)] transition-all hover:scale-105 hover:border-amber-300 hover:shadow-[0_0_36px_rgba(251,191,36,0.6)] active:scale-95 sm:mt-8 sm:px-8 sm:py-4 sm:text-lg"
         >
           <span className="flex items-center justify-center gap-3">
             <span className="transition-transform group-hover:rotate-12">🜛</span>

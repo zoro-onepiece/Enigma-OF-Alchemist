@@ -54,20 +54,20 @@ export default function MainMenu({
       </div>
 
       {/* ── TITLE ─────────────────────────────────────────────────────── */}
-      <div className="relative flex flex-col items-center text-center">
-        <span className="mb-3 text-4xl text-emerald-300 drop-shadow-[0_0_14px_rgba(52,211,153,0.8)]">
+      <div className="relative flex flex-col items-center px-4 text-center">
+        <span className="mb-2 text-3xl text-emerald-300 drop-shadow-[0_0_14px_rgba(52,211,153,0.8)] sm:mb-3 sm:text-4xl">
           ⚗️
         </span>
-        <h1 className="bg-gradient-to-b from-amber-200 via-amber-400 to-amber-600 bg-clip-text text-5xl font-bold tracking-wider text-transparent drop-shadow-[0_2px_10px_rgba(217,119,6,0.45)] md:text-7xl">
+        <h1 className="bg-gradient-to-b from-amber-200 via-amber-400 to-amber-600 bg-clip-text text-3xl font-bold tracking-wider text-transparent drop-shadow-[0_2px_10px_rgba(217,119,6,0.45)] sm:text-5xl md:text-7xl">
           Enigma of Alchemist
         </h1>
-        <p className="mt-4 text-sm uppercase tracking-[0.45em] text-emerald-300/70 md:text-base">
+        <p className="mt-3 text-xs uppercase tracking-[0.3em] text-emerald-300/70 sm:mt-4 sm:text-sm sm:tracking-[0.45em] md:text-base">
           A Web3 Puzzle Adventure
         </p>
       </div>
 
       {/* ── AUTH CARD ─────────────────────────────────────────────────── */}
-      <div className="relative mt-12 flex w-full max-w-sm flex-col items-stretch gap-4 px-6">
+      <div className="relative mt-8 flex w-full max-w-sm flex-col items-stretch gap-3 px-5 sm:mt-12 sm:gap-4 sm:px-6">
         {/* ── OPTION A: Email OTP (Magic Link) ─────────────────────────── */}
         <form onSubmit={handleEmailSubmit} className="flex flex-col gap-3">
           <input
@@ -77,12 +77,12 @@ export default function MainMenu({
             placeholder="you@example.com"
             disabled={isLoading}
             required
-            className="w-full rounded-xl border-2 border-emerald-700/60 bg-stone-900/80 px-5 py-3 text-center text-amber-100 placeholder:text-stone-500 outline-none transition-colors focus:border-amber-400/80 disabled:opacity-60"
+            className="w-full rounded-xl border-2 border-emerald-700/60 bg-stone-900/80 px-4 py-2.5 text-center text-sm text-amber-100 placeholder:text-stone-500 outline-none transition-colors focus:border-amber-400/80 disabled:opacity-60 sm:px-5 sm:py-3 sm:text-base"
           />
           <button
             type="submit"
             disabled={isLoading || !email}
-            className="group relative rounded-xl border-2 border-amber-500/90 bg-gradient-to-b from-stone-800 to-emerald-950 px-8 py-4 text-lg font-semibold tracking-widest text-amber-100 shadow-[0_0_24px_rgba(217,119,6,0.4)] transition-all hover:scale-105 hover:border-amber-300 hover:shadow-[0_0_36px_rgba(251,191,36,0.6)] active:scale-95 disabled:cursor-wait disabled:opacity-60 disabled:hover:scale-100"
+            className="group relative rounded-xl border-2 border-amber-500/90 bg-gradient-to-b from-stone-800 to-emerald-950 px-6 py-3 text-base font-semibold tracking-widest text-amber-100 shadow-[0_0_24px_rgba(217,119,6,0.4)] transition-all hover:scale-105 hover:border-amber-300 hover:shadow-[0_0_36px_rgba(251,191,36,0.6)] active:scale-95 disabled:cursor-wait disabled:opacity-60 disabled:hover:scale-100 sm:px-8 sm:py-4 sm:text-lg"
           >
             {isLoading ? (
               <span className="flex items-center justify-center gap-3">
@@ -112,9 +112,9 @@ export default function MainMenu({
           type="button"
           onClick={onLoginWithGoogle}
           disabled={isLoading}
-          className="flex items-center justify-center gap-3 rounded-xl border-2 border-stone-500/60 bg-stone-900/70 px-8 py-4 text-base font-semibold tracking-wide text-stone-100 transition-all hover:scale-105 hover:border-stone-300 active:scale-95 disabled:cursor-wait disabled:opacity-60 disabled:hover:scale-100"
+          className="flex items-center justify-center gap-3 rounded-xl border-2 border-stone-500/60 bg-stone-900/70 px-6 py-3 text-sm font-semibold tracking-wide text-stone-100 transition-all hover:scale-105 hover:border-stone-300 active:scale-95 disabled:cursor-wait disabled:opacity-60 disabled:hover:scale-100 sm:px-8 sm:py-4 sm:text-base"
         >
-          <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
+          <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0" aria-hidden="true">
             <path
               fill="#4285F4"
               d="M23.49 12.27c0-.79-.07-1.54-.19-2.27H12v4.51h6.47c-.29 1.48-1.14 2.73-2.4 3.58v3h3.86c2.26-2.09 3.56-5.17 3.56-8.82z"
@@ -142,7 +142,7 @@ export default function MainMenu({
         )}
       </div>
 
-      <p className="mt-6 text-xs tracking-wider text-stone-400">
+      <p className="mt-6 px-6 text-center text-xs tracking-wider text-stone-400">
         Sign in with email or Google — your wallet is conjured automatically
       </p>
 
@@ -150,7 +150,7 @@ export default function MainMenu({
       {isDev && (
         <button
           onClick={onDevBypass}
-          className="mt-8 rounded-md border border-dashed border-stone-500/60 bg-stone-900/60 px-5 py-2 text-xs uppercase tracking-[0.2em] text-stone-400 transition-all hover:border-emerald-400/60 hover:text-emerald-300"
+          className="mt-8 min-h-11 rounded-md border border-dashed border-stone-500/60 bg-stone-900/60 px-5 py-2.5 text-xs uppercase tracking-[0.2em] text-stone-400 transition-all hover:border-emerald-400/60 hover:text-emerald-300"
           title="Skips authentication with a fake wallet — dev builds only"
         >
           ⚒ Dev Bypass — Enter Without Login

@@ -67,15 +67,15 @@ export default function FinaleOverlay({
         ))}
       </div>
 
-      <div className="relative mx-4 max-w-lg rounded-2xl border-2 border-amber-400/70 bg-gradient-to-b from-stone-900 to-emerald-950 p-8 text-center shadow-[0_0_60px_rgba(251,191,36,0.35)]">
-        <div className="mb-3 text-5xl">🏆</div>
-        <h1 className="mb-2 text-xl font-bold tracking-wide text-amber-200">
+      <div className="relative mx-4 max-w-lg rounded-2xl border-2 border-amber-400/70 bg-gradient-to-b from-stone-900 to-emerald-950 p-5 text-center shadow-[0_0_60px_rgba(251,191,36,0.35)] sm:p-8">
+        <div className="mb-2 text-4xl sm:mb-3 sm:text-5xl">🏆</div>
+        <h1 className="mb-2 text-lg font-bold tracking-wide text-amber-200 sm:text-xl">
           The Enigma is Solved!
         </h1>
-        <p className="mb-6 text-sm text-amber-100/80">All Essences United</p>
+        <p className="mb-4 text-xs text-amber-100/80 sm:mb-6 sm:text-sm">All Essences United</p>
 
         <div
-          className="mb-6 space-y-3 text-base leading-relaxed text-amber-100/95 md:text-lg"
+          className="mb-4 space-y-2.5 text-sm leading-relaxed text-amber-100/95 sm:mb-6 sm:space-y-3 sm:text-base md:text-lg"
           style={{ animation: "finale-reveal-fade 1.4s ease-out" }}
         >
           <p>
@@ -90,28 +90,30 @@ export default function FinaleOverlay({
           </p>
         </div>
 
-        <div className="mb-6 flex justify-center gap-8">
+        <div className="mb-4 flex justify-center gap-4 sm:mb-6 sm:gap-8">
           <div>
-            <div className="text-2xl font-bold text-amber-300">{essences}/4</div>
-            <div className="text-[10px] uppercase tracking-widest text-white/40">Essences</div>
+            <div className="text-xl font-bold text-amber-300 sm:text-2xl">{essences}/4</div>
+            <div className="text-[9px] uppercase tracking-widest text-white/40 sm:text-[10px]">Essences</div>
           </div>
           <div>
-            <div className="text-2xl font-bold text-amber-300">{score}</div>
-            <div className="text-[10px] uppercase tracking-widest text-white/40">Score</div>
+            <div className="text-xl font-bold text-amber-300 sm:text-2xl">{score}</div>
+            <div className="text-[9px] uppercase tracking-widest text-white/40 sm:text-[10px]">Score</div>
           </div>
         </div>
 
-        <div className="mb-6 inline-block rounded-lg border border-amber-400/40 bg-amber-500/5 px-4 py-2 text-[11px] uppercase tracking-widest text-amber-300/90">
+        <div className="mb-4 inline-block rounded-lg border border-amber-400/40 bg-amber-500/5 px-3 py-1.5 text-[10px] uppercase tracking-widest text-amber-300/90 sm:mb-6 sm:px-4 sm:py-2 sm:text-[11px]">
           Reward: Legendary Alchemist — Verified
         </div>
 
         {onDismiss && (
-          <button
-            onClick={onDismiss}
-            className="rounded-lg border border-amber-400/60 bg-amber-500/10 px-5 py-2 text-sm font-semibold text-amber-200 transition-colors hover:bg-amber-500/20"
-          >
-            Continue
-          </button>
+          <div>
+            <button
+              onClick={onDismiss}
+              className="min-h-11 rounded-lg border border-amber-400/60 bg-amber-500/10 px-5 py-2.5 text-sm font-semibold text-amber-200 transition-colors hover:bg-amber-500/20"
+            >
+              Continue
+            </button>
+          </div>
         )}
       </div>
 

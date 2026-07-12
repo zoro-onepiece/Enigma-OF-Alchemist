@@ -25,6 +25,7 @@ import Scene from "@/components/scene/Scene";
 import MainMenu from "@/MainMenu";
 import IntroStory from "@/components/story/IntroStory";
 import { useGameStore } from "@/store/gameStore";
+import { setVoidAmbienceActive, stopMusic } from "@/audio/sounds";
 import {
   loginWithEmail,
   loginWithGoogle,
@@ -122,6 +123,16 @@ export default function App() {
   const isLoggedIn = Boolean(walletAddress);
   const hasSeenIntro = useGameStore((s) => s.hasSeenIntro);
   const setHasSeenIntro = useGameStore((s) => s.setHasSeenIntro);
+
+  // Pre-gameplay ambience (void.mp3) plays across MainMenu + IntroStory and
+  // stops the instant Scene mounts, where gameplay music (music.mp3) takes
+  // over — the two loops are mutually exclusive. Also fades gameplay music
+  // out on logout, since that's the same "gameplay just ended" transition.
+  const gameplayActive = isLoggedIn && hasSeenIntro;
+  useEffect(() => {
+    setVoidAmbienceActive(!gameplayActive);
+    if (!gameplayActive) stopMusic();
+  }, [gameplayActive]);
 
   // While the initial redirect/session check is still resolving, render
   // nothing but the backdrop rather than the login menu — otherwise the

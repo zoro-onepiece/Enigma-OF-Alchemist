@@ -21,6 +21,7 @@ import { useEffect, useRef, useState } from "react";
 
 interface ElementalSudokuProps {
   onWin: () => void;
+  onLose?: () => void;
 }
 
 const SIZE = 4;
@@ -167,7 +168,7 @@ function isBoardValid(values: (number | null)[]): boolean {
   return true;
 }
 
-export default function ElementalSudoku({ onWin }: ElementalSudokuProps) {
+export default function ElementalSudoku({ onWin, onLose }: ElementalSudokuProps) {
   const [board, setBoard] = useState(() => generatePuzzle());
   const [selectedSymbol, setSelectedSymbol] = useState<number | null>(0);
   const [conflictCells, setConflictCells] = useState<Set<number>>(new Set());
@@ -182,7 +183,17 @@ export default function ElementalSudoku({ onWin }: ElementalSudokuProps) {
     wonRef.current = false;
   };
 
+  // Unlike the other three mini-games, Sudoku has no move limit or hard-
+  // fail state by design — placements are freely revisable forever
+  // (conflicts just flash, the board is never unrecoverable). "Reset"
+  // (discarding every placement back to the givens) is the one action
+  // that's an explicit admission the current attempt isn't working out —
+  // the direct analog of Alchemy Match-3's "Restart" after running out of
+  // moves — so it's the fail/retry transition that costs HP here.
+  // "New Board" is left uncosted since it's closer to skipping to a
+  // different puzzle than failing this one.
   const handleReset = () => {
+    onLose?.();
     setBoard((prev) => ({
       solution: prev.solution,
       givens: prev.givens,

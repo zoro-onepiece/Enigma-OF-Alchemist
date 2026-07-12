@@ -11,6 +11,7 @@ import { usePuzzleSound } from "./usePuzzleSound";
 
 interface RuneMemoryGameProps {
   onWin: () => void;
+  onLose?: () => void;
 }
 
 type UiPhase = "flashing" | "input" | "wrong";
@@ -30,7 +31,7 @@ function randomSequence(length: number): number[] {
   return Array.from({ length }, () => Math.floor(Math.random() * RUNES.length));
 }
 
-export default function RuneMemoryGame({ onWin }: RuneMemoryGameProps) {
+export default function RuneMemoryGame({ onWin, onLose }: RuneMemoryGameProps) {
   const [round, setRound] = useState(1);
   const [sequence, setSequence] = useState<number[]>(() => randomSequence(START_LENGTH));
   const [uiPhase, setUiPhase] = useState<UiPhase>("flashing");
@@ -78,6 +79,13 @@ export default function RuneMemoryGame({ onWin }: RuneMemoryGameProps) {
       playWrong();
       setUiPhase("wrong");
       clearTimers();
+      // A wrong click fails the whole round outright — it doesn't just
+      // un-commit a tentative move (unlike, say, Match-3's silently-
+      // reverted invalid swap) — the sequence gets forcibly replayed from
+      // the start. That's this game's real fail/retry transition, so it's
+      // what costs HP, mirroring Alchemy Match-3's onLose() call at its own
+      // equivalent "attempt failed, restart" moment.
+      onLose?.();
       timeouts.current.push(setTimeout(() => playFlashSequence(sequence), 900));
       return;
     }

@@ -20,6 +20,13 @@ export default function GameHUD({
   essences = 3, // collected alchemical essences / NFT keys
   onConnectWallet = () => {},
   walletAddress = null,
+  // Task D: puzzle-location map toggle — desktop "M" key or this icon.
+  mapOpen = false,
+  onToggleMap = () => {},
+  // Task B: true on touch/narrow-viewport devices — reserves extra bottom
+  // clearance under the score/inventory panel so it never sits under the
+  // on-screen action button (both are bottom-right).
+  mobileControlsActive = false,
 }) {
   const healthPct = Math.max(0, Math.min(100, (health / maxHealth) * 100));
   const lowHealth = healthPct <= 25;
@@ -34,21 +41,21 @@ export default function GameHUD({
     <div className="pointer-events-none absolute inset-0 z-50 select-none font-serif">
 
       {/* ── TOP LEFT: Elixir Health Bar ─────────────────────────────── */}
-      <div className="absolute left-4 top-4 flex items-center gap-3">
+      <div className="absolute left-2 top-2 flex items-center gap-2 sm:left-4 sm:top-4 sm:gap-3">
         {/* Alchemy sigil medallion */}
-        <div className="flex h-14 w-14 items-center justify-center rounded-full border-2 border-amber-600/80 bg-gradient-to-b from-stone-900 to-emerald-950 shadow-[0_0_12px_rgba(16,185,129,0.35)]">
-          <span className="text-2xl text-emerald-300 drop-shadow-[0_0_6px_rgba(52,211,153,0.9)]">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 border-amber-600/80 bg-gradient-to-b from-stone-900 to-emerald-950 shadow-[0_0_12px_rgba(16,185,129,0.35)] sm:h-14 sm:w-14">
+          <span className="text-lg text-emerald-300 drop-shadow-[0_0_6px_rgba(52,211,153,0.9)] sm:text-2xl">
             ⚗️
           </span>
         </div>
 
-        <div className="flex flex-col gap-1">
-          <span className="text-xs uppercase tracking-[0.25em] text-amber-200/90 drop-shadow">
+        <div className="flex flex-col gap-0.5 sm:gap-1">
+          <span className="text-[9px] uppercase tracking-[0.15em] text-amber-200/90 drop-shadow sm:text-xs sm:tracking-[0.25em]">
             Vitality Elixir
           </span>
 
           {/* Vial track */}
-          <div className="relative h-5 w-56 overflow-hidden rounded-full border-2 border-amber-700/90 bg-stone-950/80 shadow-inner">
+          <div className="relative h-4 w-36 overflow-hidden rounded-full border-2 border-amber-700/90 bg-stone-950/80 shadow-inner sm:h-5 sm:w-56">
             {/* Liquid fill */}
             <div
               className={[
@@ -62,7 +69,7 @@ export default function GameHUD({
             {/* Glass shine overlay */}
             <div className="pointer-events-none absolute inset-x-0 top-0 h-2 rounded-full bg-white/15" />
             {/* HP text */}
-            <span className="absolute inset-0 flex items-center justify-center text-[11px] font-bold tracking-wider text-amber-50 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">
+            <span className="absolute inset-0 flex items-center justify-center text-[9px] font-bold tracking-wider text-amber-50 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] sm:text-[11px]">
               {health} / {maxHealth}
             </span>
           </div>
@@ -70,19 +77,32 @@ export default function GameHUD({
       </div>
 
       {/* ── TOP RIGHT: Web3 Connect Wallet (placeholder) ────────────── */}
-      <div className="absolute right-4 top-4 flex items-start gap-2">
+      <div className="absolute right-2 top-2 flex items-start gap-1.5 sm:right-4 sm:top-4 sm:gap-2">
+        <button
+          onClick={onToggleMap}
+          title={mapOpen ? "Close map (M)" : "Open map (M)"}
+          aria-pressed={mapOpen}
+          className={[
+            "pointer-events-auto flex h-11 w-11 items-center justify-center rounded-lg border-2 text-sm shadow-[0_0_14px_rgba(217,119,6,0.35)] backdrop-blur-sm transition-all hover:scale-105 active:scale-95 sm:h-[42px] sm:w-[42px] sm:text-lg",
+            mapOpen
+              ? "border-amber-300 bg-amber-500/20 text-amber-200"
+              : "border-amber-500/80 bg-gradient-to-b from-stone-800/95 to-emerald-950/95 text-amber-100 hover:border-amber-300 hover:shadow-[0_0_20px_rgba(251,191,36,0.55)]",
+          ].join(" ")}
+        >
+          🗺️
+        </button>
         <button
           onClick={toggleMute}
           title={muted ? "Unmute puzzle sounds" : "Mute puzzle sounds"}
-          className="pointer-events-auto flex h-[42px] w-[42px] items-center justify-center rounded-lg border-2 border-amber-500/80 bg-gradient-to-b from-stone-800/95 to-emerald-950/95 text-lg text-amber-100 shadow-[0_0_14px_rgba(217,119,6,0.35)] backdrop-blur-sm transition-all hover:scale-105 hover:border-amber-300 hover:shadow-[0_0_20px_rgba(251,191,36,0.55)] active:scale-95"
+          className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-lg border-2 border-amber-500/80 bg-gradient-to-b from-stone-800/95 to-emerald-950/95 text-sm text-amber-100 shadow-[0_0_14px_rgba(217,119,6,0.35)] backdrop-blur-sm transition-all hover:scale-105 hover:border-amber-300 hover:shadow-[0_0_20px_rgba(251,191,36,0.55)] active:scale-95 sm:h-[42px] sm:w-[42px] sm:text-lg"
         >
           {muted ? "🔇" : "🔊"}
         </button>
         <button
           onClick={onConnectWallet}
-          className="pointer-events-auto group flex items-center gap-2 rounded-lg border-2 border-amber-500/80 bg-gradient-to-b from-stone-800/95 to-emerald-950/95 px-4 py-2 text-sm font-semibold tracking-wide text-amber-100 shadow-[0_0_14px_rgba(217,119,6,0.35)] backdrop-blur-sm transition-all hover:scale-105 hover:border-amber-300 hover:shadow-[0_0_20px_rgba(251,191,36,0.55)] active:scale-95"
+          className="pointer-events-auto group flex items-center gap-1 rounded-lg border-2 border-amber-500/80 bg-gradient-to-b from-stone-800/95 to-emerald-950/95 px-2.5 py-1.5 text-xs font-semibold tracking-wide text-amber-100 shadow-[0_0_14px_rgba(217,119,6,0.35)] backdrop-blur-sm transition-all hover:scale-105 hover:border-amber-300 hover:shadow-[0_0_20px_rgba(251,191,36,0.55)] active:scale-95 sm:gap-2 sm:px-4 sm:py-2 sm:text-sm"
         >
-          <span className="text-lg transition-transform group-hover:rotate-12">
+          <span className="text-sm transition-transform group-hover:rotate-12 sm:text-lg">
             🜛
           </span>
           {shortAddr ? (
@@ -91,50 +111,59 @@ export default function GameHUD({
             <span>Connect Wallet</span>
           )}
         </button>
-        {/* Network tag */}
-        <div className="mt-1 text-right text-[10px] uppercase tracking-widest text-emerald-400/70">
+        {/* Network tag — hidden below sm, top row is tight enough on a
+            375/414px phone without it; the wallet button already implies
+            the network via its own copy once connected. */}
+        <div className="mt-1 hidden text-right text-[10px] uppercase tracking-widest text-emerald-400/70 sm:block">
           Arbitrum Sepolia
         </div>
       </div>
 
-      {/* ── BOTTOM RIGHT: Inventory / Score ─────────────────────────── */}
-      <div className="absolute bottom-4 right-4 flex flex-col items-end gap-2">
+      {/* ── BOTTOM RIGHT: Inventory / Score ───────────────────────────
+          Extra bottom clearance when the mobile action button is showing
+          (both live bottom-right) so the two never overlap. ──────────── */}
+      <div
+        className={[
+          "absolute right-2 flex flex-col items-end gap-1.5 sm:right-4 sm:gap-2",
+          mobileControlsActive ? "bottom-24" : "bottom-2 sm:bottom-4",
+        ].join(" ")}
+      >
         {/* Score plaque */}
-        <div className="rounded-md border border-amber-600/70 bg-stone-950/80 px-4 py-1.5 shadow-lg backdrop-blur-sm">
-          <span className="mr-2 text-[10px] uppercase tracking-[0.3em] text-amber-400/80">
+        <div className="rounded-md border border-amber-600/70 bg-stone-950/80 px-2.5 py-1 shadow-lg backdrop-blur-sm sm:px-4 sm:py-1.5">
+          <span className="mr-1.5 text-[8px] uppercase tracking-[0.2em] text-amber-400/80 sm:mr-2 sm:text-[10px] sm:tracking-[0.3em]">
             Arcana
           </span>
-          <span className="text-lg font-bold text-amber-100 drop-shadow">
+          <span className="text-sm font-bold text-amber-100 drop-shadow sm:text-lg">
             {score.toLocaleString()}
           </span>
         </div>
 
         {/* Inventory slots (4 slots; filled = collected essence) */}
-        <div className="flex gap-2 rounded-xl border-2 border-amber-700/70 bg-gradient-to-b from-stone-900/90 to-stone-950/90 p-2 shadow-[0_0_16px_rgba(0,0,0,0.6)] backdrop-blur-sm">
+        <div className="flex gap-1.5 rounded-xl border-2 border-amber-700/70 bg-gradient-to-b from-stone-900/90 to-stone-950/90 p-1.5 shadow-[0_0_16px_rgba(0,0,0,0.6)] backdrop-blur-sm sm:gap-2 sm:p-2">
           {[0, 1, 2, 3].map((slot) => {
             const filled = slot < essences;
             return (
               <div
                 key={slot}
                 className={[
-                  "flex h-12 w-12 items-center justify-center rounded-lg border-2 transition-all",
+                  "flex h-8 w-8 items-center justify-center rounded-lg border-2 transition-all sm:h-12 sm:w-12",
                   filled
                     ? "border-emerald-400/80 bg-emerald-900/60 shadow-[inset_0_0_10px_rgba(52,211,153,0.5)]"
                     : "border-stone-600/60 bg-stone-800/50",
                 ].join(" ")}
               >
                 {filled ? (
-                  <span className="text-xl drop-shadow-[0_0_5px_rgba(52,211,153,0.9)]">
+                  <span className="text-sm drop-shadow-[0_0_5px_rgba(52,211,153,0.9)] sm:text-xl">
                     🧪
                   </span>
                 ) : (
-                  <span className="text-stone-600">✦</span>
+                  <span className="text-xs text-stone-600 sm:text-base">✦</span>
                 )}
               </div>
             );
           })}
         </div>
-        <span className="text-[10px] uppercase tracking-[0.25em] text-amber-300/60">
+        <span className="text-[8px] uppercase tracking-[0.15em] text-amber-300/60 sm:text-[10px] sm:tracking-[0.25em]">
           Essences · {essences} / 4
         </span>
       </div>

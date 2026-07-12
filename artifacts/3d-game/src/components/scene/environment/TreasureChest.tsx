@@ -15,6 +15,7 @@ import { Html } from "@react-three/drei";
 import * as THREE from "three";
 import { PLAYER_WORLD_POS } from "../../3d/Player";
 import SparkleFountain from "../effects/SparkleFountain";
+import { useGameStore } from "../../../store/gameStore";
 
 export interface TreasureChestProps {
   position: [number, number, number];
@@ -37,6 +38,7 @@ export default function TreasureChest({ position, claimed, onClaim }: TreasureCh
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key.toLowerCase() !== "e") return;
+      if (useGameStore.getState().phase === "dead") return;
       if (inRangeRef.current && !claimed) onClaim();
     };
     window.addEventListener("keydown", handler);

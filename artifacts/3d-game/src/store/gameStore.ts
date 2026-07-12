@@ -76,32 +76,47 @@ interface GameStore {
   closeInventory: () => void;
   claimFinale: () => void;
   setHasSeenIntro: () => void;
+  // Death + restart: resets the run back to a fresh start after Game Over's
+  // "Try Again" — full heal, puzzles/score/phase reset, world position
+  // reset (via Player.tsx's teleportPlayerToSpawn, called by the caller
+  // alongside this action). Deliberately does NOT reset hasSeenIntro — a
+  // retry should never replay the intro story, only a fresh login does.
+  restartRun: () => void;
+}
+
+// Shared by the store's initial state and restartRun() so a restart is
+// guaranteed to land on the exact same fresh-run values, not a
+// hand-maintained second copy that could drift out of sync.
+function createInitialRunState() {
+  return {
+    playerHp: 100,
+    playerMaxHp: 100,
+    playerMana: 80,
+    playerMaxMana: 80,
+    xp: 0,
+    level: 1,
+    score: 340,
+    monsters: [] as Monster[],
+    puzzle: { activeId: null, solved: new Set<string>() } as PuzzleState,
+    inventoryOpen: false,
+    finaleClaimed: false,
+  };
 }
 
 export const useGameStore = create<GameStore>((set) => ({
   // ─── Initial state ──────────────────────────────────────────────────────────
-  playerHp: 100,
-  playerMaxHp: 100,
-  playerMana: 80,
-  playerMaxMana: 80,
-  xp: 0,
-  level: 1,
-  score: 340,
-  monsters: [],
-  puzzle: { activeId: null, solved: new Set() },
+  ...createInitialRunState(),
   phase: "menu",
-  inventoryOpen: false,
-  finaleClaimed: false,
   hasSeenIntro: false,
 
   // ─── Actions ─────────────────────────────────────────────────────────────────
   setGameState: (patch) => set(patch),
 
   damagePlayer: (amount) =>
-    set((s) => ({
-      playerHp: Math.max(0, s.playerHp - amount),
-      phase: s.playerHp - amount <= 0 ? "dead" : s.phase,
-    })),
+    set((s) => {
+      const nextHp = Math.max(0, s.playerHp - amount);
+      return { playerHp: nextHp, phase: nextHp <= 0 ? "dead" : s.phase };
+    }),
 
   healPlayer: (amount) =>
     set((s) => ({ playerHp: Math.min(s.playerMaxHp, s.playerHp + amount) })),
@@ -145,4 +160,11 @@ export const useGameStore = create<GameStore>((set) => ({
   claimFinale: () => set({ finaleClaimed: true }),
 
   setHasSeenIntro: () => set({ hasSeenIntro: true }),
+
+  restartRun: () =>
+    set((s) => ({
+      ...createInitialRunState(),
+      phase: "exploring",
+      hasSeenIntro: s.hasSeenIntro,
+    })),
 }));

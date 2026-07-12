@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(pnpm --filter @workspace/3d-game run typecheck)"
+      "Bash(pnpm --filter @workspace/3d-game run typecheck)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:24982/)",
+      "Bash(curl -s http://localhost:24982/)",
+      "Bash(npx playwright *)",
+      "Bash(ldconfig -p)"
     ]
   }
 }

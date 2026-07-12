@@ -450,10 +450,26 @@ import { useGLTF, useAnimations, useKeyboardControls } from "@react-three/drei";
 import { useFrame, useThree, createPortal } from "@react-three/fiber";
 import * as THREE from "three";
 import { resolveMove, clampToBoundary } from "../../lib/worldCollision";
+import { touchMove } from "../../lib/touchControls";
 
 export const PLAYER_SPAWN: [number, number, number] = [0, 0, 0];
 export const PLAYER_WORLD_POS = new THREE.Vector3(...PLAYER_SPAWN);
 export const PLAYER_WORLD_ROT = { y: 0 };
+
+// External escape hatch for a full-run restart (Game Over -> Try Again).
+// Mirrors the existing PLAYER_WORLD_POS/PLAYER_WORLD_ROT pattern (a plain
+// mutable reference kept in sync from the component) rather than touching
+// the useFrame movement/animation logic itself — Scene.tsx calls this
+// directly from its restart handler, Player.tsx never reads gameStore.
+let playerGroupInstance: THREE.Group | null = null;
+
+export function teleportPlayerToSpawn(): void {
+  if (!playerGroupInstance) return;
+  playerGroupInstance.position.set(...PLAYER_SPAWN);
+  playerGroupInstance.rotation.y = 0;
+  PLAYER_WORLD_POS.copy(playerGroupInstance.position);
+  PLAYER_WORLD_ROT.y = 0;
+}
 
 const PLAYER_SCALE = 0.4;
 
@@ -518,6 +534,15 @@ const _desiredCamPos = new THREE.Vector3();
 function PlayerModel() {
   const group = useRef<THREE.Group>(null);
   const { camera, gl } = useThree();
+
+  // Register/unregister the group ref for teleportPlayerToSpawn() above —
+  // purely an external-access registration, no movement/animation logic.
+  useEffect(() => {
+    playerGroupInstance = group.current;
+    return () => {
+      playerGroupInstance = null;
+    };
+  }, []);
 
   const { scene, animations } = useGLTF("/final_player3.glb");
   const { actions, mixer } = useAnimations(animations, group);
@@ -775,11 +800,23 @@ function PlayerModel() {
     _camRight.crossVectors(_camForward, WORLD_UP).normalize();
 
     const { forward, backward, left, right, sprint } = getKeys();
-    const moving = forward || backward || left || right;
+    // Mobile joystick contributes the exact same -1..1 analog axes the
+    // keyboard derives below, added on top so either input source (or
+    // both, e.g. a keyboard user who also has a touchscreen) drives the
+    // identical _moveDir math further down.
+    const forwardInput = THREE.MathUtils.clamp(
+      (forward ? 1 : 0) - (backward ? 1 : 0) + touchMove.z,
+      -1,
+      1,
+    );
+    const strafeInput = THREE.MathUtils.clamp(
+      (right ? 1 : 0) - (left ? 1 : 0) + touchMove.x,
+      -1,
+      1,
+    );
+    const moving =
+      forward || backward || left || right || forwardInput !== 0 || strafeInput !== 0;
     const speed = sprint ? RUN_SPEED : WALK_SPEED;
-
-    const forwardInput = (forward ? 1 : 0) - (backward ? 1 : 0);
-    const strafeInput = (right ? 1 : 0) - (left ? 1 : 0);
 
     _moveDir
       .set(0, 0, 0)
