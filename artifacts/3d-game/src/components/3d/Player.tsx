@@ -815,7 +815,12 @@ function PlayerModel() {
       1,
     );
     const moving =
-      forward || backward || left || right || forwardInput !== 0 || strafeInput !== 0;
+      forward ||
+      backward ||
+      left ||
+      right ||
+      forwardInput !== 0 ||
+      strafeInput !== 0;
     const speed = sprint ? RUN_SPEED : WALK_SPEED;
 
     _moveDir

@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { Canvas } from "@react-three/fiber";
-import { Environment, Sky, Clouds, Cloud, Stats, KeyboardControls } from "@react-three/drei";
+import {
+  Environment,
+  Sky,
+  Clouds,
+  Cloud,
+  Stats,
+  KeyboardControls,
+} from "@react-three/drei";
 import * as THREE from "three";
 import Lighting, { SUN_POSITION } from "./Lighting";
 import GameEnvironment from "./environment/GameEnvironment";
@@ -53,7 +60,9 @@ function WebGLFallback() {
         🎮
       </div>
       <div className="text-center max-w-md">
-        <h2 className="text-lg font-semibold text-white mb-2">WebGL Unavailable</h2>
+        <h2 className="text-lg font-semibold text-white mb-2">
+          WebGL Unavailable
+        </h2>
         <p className="text-sm text-white/50 leading-relaxed">
           This preview sandbox has no GPU access. The 3D scene renders correctly
           in a real browser — deploy the app or open it in Chrome / Firefox.
@@ -125,7 +134,8 @@ export default function Scene({
     // Capture-phase listeners run top-down BEFORE that bubble-phase
     // stopPropagation() ever fires, so this is immune to it.
     window.addEventListener("keydown", handler, { capture: true });
-    return () => window.removeEventListener("keydown", handler, { capture: true });
+    return () =>
+      window.removeEventListener("keydown", handler, { capture: true });
   }, []);
 
   // Task B: on-screen joystick + action button replace the keyboard hint
@@ -163,7 +173,9 @@ export default function Scene({
     prevEssences.current = essences;
   }, [essences]);
 
-  const [internalWalletAddress, setInternalWalletAddress] = useState<string | null>(null);
+  const [internalWalletAddress, setInternalWalletAddress] = useState<
+    string | null
+  >(null);
 
   const handleConnectWallet = () => {
     // Placeholder — Magic Labs + Openfort wiring happens here for Arbitrum Sepolia.
@@ -171,7 +183,8 @@ export default function Scene({
     setInternalWalletAddress("0x1234abcd5678ef901234abcd5678ef901234abcd");
   };
 
-  const walletAddress = walletAddressProp !== undefined ? walletAddressProp : internalWalletAddress;
+  const walletAddress =
+    walletAddressProp !== undefined ? walletAddressProp : internalWalletAddress;
   const onConnectWallet = onConnectWalletProp ?? handleConnectWallet;
 
   if (!isWebGLAvailable()) {
@@ -187,19 +200,17 @@ export default function Scene({
           animation logic completely untouched; the gate lives here instead,
           "before" Player.tsx in the data flow. */}
       <KeyboardControls map={gamePhase === "dead" ? [] : playerKeyboardMap}>
-      <Canvas
-        shadows
-        dpr={[1, 1.5]}
-        camera={{ position: [0, 3, 8], fov: 50, near: 0.1, far: 500 }}
-        gl={{ antialias: true, alpha: false }}
-        style={{ background: "#0a0a18" }}
-      >
-        {showStats && <Stats />}
-
-        {/* ── Lighting ──────────────────────────────────────────────────── */}
-        <Lighting />
-
-        {/* ── Sky / ambience ────────────────────────────────────────────────
+        <Canvas
+          shadows
+          dpr={[1, 1.5]}
+          camera={{ position: [0, 3, 8], fov: 50, near: 0.1, far: 500 }}
+          gl={{ antialias: true, alpha: false }}
+          style={{ background: "#0a0a18" }}
+        >
+          {showStats && <Stats />}
+          {/* ── Lighting ──────────────────────────────────────────────────── */}
+          <Lighting />
+          {/* ── Sky / ambience ────────────────────────────────────────────────
             Bright blue daytime look: sun high in the sky, low turbidity for
             a clean atmosphere, soft white clouds drifting well above the
             treeline (y ≈ 40–80). SUN_POSITION is shared with Lighting.tsx's
@@ -207,16 +218,49 @@ export default function Scene({
             visible sun. Environment only supplies ambient/reflection
             lighting here (background={false}) — the actual sky dome/color
             comes from <Sky> + the explicit background <color> below. */}
-        <Sky sunPosition={SUN_POSITION} turbidity={1} rayleigh={0.4} mieCoefficient={0.003} mieDirectionalG={0.7} />
-        <Environment preset="park" background={false} />
-        <Clouds material={THREE.MeshBasicMaterial} limit={40} range={60}>
-          <Cloud seed={1} position={[-30, 55, -40]} bounds={[40, 8, 40]} volume={22} opacity={0.55} speed={0.06} />
-          <Cloud seed={7} position={[35, 68, -20]} bounds={[45, 10, 45]} volume={26} opacity={0.5} speed={0.05} />
-          <Cloud seed={13} position={[-10, 78, 30]} bounds={[50, 9, 50]} volume={24} opacity={0.5} speed={0.07} />
-          <Cloud seed={21} position={[25, 45, 45]} bounds={[35, 7, 35]} volume={18} opacity={0.6} speed={0.05} />
-        </Clouds>
-
-        {/* Explicit background + fog so the horizon blends seamlessly with
+          <Sky
+            sunPosition={SUN_POSITION}
+            turbidity={1}
+            rayleigh={0.4}
+            mieCoefficient={0.003}
+            mieDirectionalG={0.7}
+          />
+          <Environment preset="park" background={false} />
+          <Clouds material={THREE.MeshBasicMaterial} limit={40} range={60}>
+            <Cloud
+              seed={1}
+              position={[-30, 55, -40]}
+              bounds={[40, 8, 40]}
+              volume={22}
+              opacity={0.55}
+              speed={0.06}
+            />
+            <Cloud
+              seed={7}
+              position={[35, 68, -20]}
+              bounds={[45, 10, 45]}
+              volume={26}
+              opacity={0.5}
+              speed={0.05}
+            />
+            <Cloud
+              seed={13}
+              position={[-10, 78, 30]}
+              bounds={[50, 9, 50]}
+              volume={24}
+              opacity={0.5}
+              speed={0.07}
+            />
+            <Cloud
+              seed={21}
+              position={[25, 45, 45]}
+              bounds={[35, 7, 35]}
+              volume={18}
+              opacity={0.6}
+              speed={0.05}
+            />
+          </Clouds>
+          {/* Explicit background + fog so the horizon blends seamlessly with
             the sky at any zoom/camera distance — no white gaps beyond the
             ground plane or Sky dome. GameEnvironment.tsx intentionally does
             NOT declare its own <fog>; this is the single source of truth.
@@ -225,28 +269,26 @@ export default function Scene({
             DistantScenery's far mountain ring (max radius ~270*scale) and
             floating islands (max radius ~220*scale), letting them fade
             softly into the sky color instead of hard-clipping. */}
-        <color attach="background" args={[SKY_COLOR]} />
-        <fog
-          attach="fog"
-          args={[SKY_COLOR, 60 * ISLAND_SCALE, 300 * ISLAND_SCALE]}
-        />
-
-        {/* ── Code-generated Japanese temple garden environment ────────────
+          <color attach="background" args={[SKY_COLOR]} />
+          <fog
+            attach="fog"
+            args={[SKY_COLOR, 60 * ISLAND_SCALE, 300 * ISLAND_SCALE]}
+          />
+          {/* ── Code-generated Japanese temple garden environment ────────────
             Ground, pathway, temple, trees, and puzzle props — see
             GameEnvironment.tsx and its environment/ subcomponents. No GLB
             models are loaded here. */}
-        <GameEnvironment />
+          <GameEnvironment />
+          {/* ── Merchant ──────────────────────────────────────────────────── */}
+          <Merchant /> {/* <--- YAHAN MERCHANT ADD KAREIN */}
+          {/* ── Player ────────────────────────────────────────────────────── */}
+          <Player />
+        </Canvas>
 
-        {/* ── Merchant ──────────────────────────────────────────────────── */}
-        <Merchant />   {/* <--- YAHAN MERCHANT ADD KAREIN */}
-        {/* ── Player ────────────────────────────────────────────────────── */}
-        <Player />
-      </Canvas>
-
-      {/* ── Sprint breathing SFX — surrounding wiring only, reads the same
+        {/* ── Sprint breathing SFX — surrounding wiring only, reads the same
           KeyboardControls context Player.tsx reads; Player.tsx's movement/
           speed logic itself is untouched. ────────────────────────────────── */}
-      <SprintBreathSound />
+        <SprintBreathSound />
       </KeyboardControls>
 
       {/* ── Alchemist HUD overlay ────────────────────────────────────────── */}
@@ -289,7 +331,9 @@ export default function Scene({
       {/* ── Game Over overlay — shown when playerHp hits 0 (phase 'dead').
           "Try Again" fully resets the run and teleports the player back to
           spawn; see handleRestart above. ─────────────────────────────────── */}
-      {gamePhase === "dead" && <GameOverOverlay score={score} onRestart={handleRestart} />}
+      {gamePhase === "dead" && (
+        <GameOverOverlay score={score} onRestart={handleRestart} />
+      )}
 
       {/* ── Rune puzzle modal (Phase 3) ──────────────────────────────────────
           Mounted only while a puzzle is active. onSolved wires straight to
@@ -309,17 +353,14 @@ export default function Scene({
       {!showTouchControls && (
         <div className="absolute bottom-5 left-1/2 -translate-x-1/2 flex items-center gap-3 pointer-events-none select-none">
           {[
-            { keys: "W / ↑",   label: "Forward"    },
-            { keys: "S / ↓",   label: "Backward"   },
-            { keys: "A / ←",   label: "Strafe L"   },
-            { keys: "D / →",   label: "Strafe R"   },
-            { keys: "Mouse",   label: "Look Around"},
-            { keys: "M",       label: "Map"        },
+            { keys: "W / ↑", label: "Forward" },
+            { keys: "S / ↓", label: "Backward" },
+            { keys: "A / ←", label: "Strafe L" },
+            { keys: "D / →", label: "Strafe R" },
+            { keys: "Mouse", label: "Look Around" },
+            { keys: "M", label: "Map" },
           ].map(({ keys, label }) => (
-            <div
-              key={label}
-              className="flex flex-col items-center gap-0.5"
-            >
+            <div key={label} className="flex flex-col items-center gap-0.5">
               <kbd className="bg-white/10 border border-white/20 rounded px-2 py-0.5 text-[10px] font-mono text-purple-300">
                 {keys}
               </kbd>

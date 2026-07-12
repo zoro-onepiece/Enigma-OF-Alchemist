@@ -3,12 +3,14 @@
  *
  * Task D: toggleable top-down 2D map — temple at center, the 4 puzzle
  * pedestals as dots (gold once solved, their real pedestal color while
- * not), and the player's live position + facing as a distinct marker.
+ * not), the mushroom merchant as a distinct marker, and the player's live
+ * position + facing as a distinct marker.
  * A plain SVG, not a literal top-down camera render.
  *
  * Reuses the exact same world coordinates gameplay already uses instead of
  * a second hand-maintained layout: TEMPLE_POSITION/PUZZLE_PLACEMENTS from
- * GameEnvironment.tsx, BOUNDARY_RADIUS from worldCollision.ts, and
+ * GameEnvironment.tsx, MERCHANT_POSITION from Merchant.tsx,
+ * BOUNDARY_RADIUS from worldCollision.ts, and
  * PLAYER_WORLD_POS/PLAYER_WORLD_ROT from Player.tsx (the same mutable
  * refs Player.tsx's own useFrame writes every frame — polled here via
  * requestAnimationFrame since this is a plain DOM component, not an R3F
@@ -16,8 +18,15 @@
  */
 import { useEffect, useState } from "react";
 import { PLAYER_WORLD_POS, PLAYER_WORLD_ROT } from "../3d/Player";
-import { TEMPLE_POSITION, PUZZLE_PLACEMENTS } from "../scene/environment/GameEnvironment";
-import { SOLVED_COLOR, DEFAULT_PUZZLE_COLOR } from "../scene/environment/GlowingPuzzle";
+import { MERCHANT_POSITION } from "../3d/Merchant";
+import {
+  TEMPLE_POSITION,
+  PUZZLE_PLACEMENTS,
+} from "../scene/environment/GameEnvironment";
+import {
+  SOLVED_COLOR,
+  DEFAULT_PUZZLE_COLOR,
+} from "../scene/environment/GlowingPuzzle";
 import { BOUNDARY_RADIUS } from "../../lib/worldCollision";
 import { useGameStore } from "../../store/gameStore";
 
@@ -40,7 +49,11 @@ export default function MinimapOverlay({ onClose }: MinimapOverlayProps) {
   useEffect(() => {
     let raf: number;
     const tick = () => {
-      setPlayer({ x: PLAYER_WORLD_POS.x, z: PLAYER_WORLD_POS.z, rotY: PLAYER_WORLD_ROT.y });
+      setPlayer({
+        x: PLAYER_WORLD_POS.x,
+        z: PLAYER_WORLD_POS.z,
+        rotY: PLAYER_WORLD_ROT.y,
+      });
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -48,6 +61,7 @@ export default function MinimapOverlay({ onClose }: MinimapOverlayProps) {
   }, []);
 
   const temple = toMap(TEMPLE_POSITION[0], TEMPLE_POSITION[2]);
+  const merchant = toMap(MERCHANT_POSITION[0], MERCHANT_POSITION[2]);
   const playerMap = toMap(player.x, player.z);
 
   // Facing arrow built directly from the (sin, cos) unit vector Player.tsx
@@ -59,8 +73,14 @@ export default function MinimapOverlay({ onClose }: MinimapOverlayProps) {
   const px = -fy;
   const py = fx;
   const tip = { x: playerMap.x + fx * 6, y: playerMap.y + fy * 6 };
-  const backLeft = { x: playerMap.x - fx * 3 + px * 3.5, y: playerMap.y - fy * 3 + py * 3.5 };
-  const backRight = { x: playerMap.x - fx * 3 - px * 3.5, y: playerMap.y - fy * 3 - py * 3.5 };
+  const backLeft = {
+    x: playerMap.x - fx * 3 + px * 3.5,
+    y: playerMap.y - fy * 3 + py * 3.5,
+  };
+  const backRight = {
+    x: playerMap.x - fx * 3 - px * 3.5,
+    y: playerMap.y - fy * 3 - py * 3.5,
+  };
 
   return (
     <div className="pointer-events-none absolute inset-x-0 top-20 z-[65] flex justify-center px-4 sm:top-24">
@@ -84,7 +104,14 @@ export default function MinimapOverlay({ onClose }: MinimapOverlayProps) {
           viewBox={`-${VIEW_HALF} -${VIEW_HALF} ${VIEW_HALF * 2} ${VIEW_HALF * 2}`}
           className="max-w-[45vw] rounded-lg bg-emerald-950/70 sm:max-w-none"
         >
-          <circle cx={0} cy={0} r={VIEW_HALF - 2} fill="none" stroke="#4ade8055" strokeWidth={1} />
+          <circle
+            cx={0}
+            cy={0}
+            r={VIEW_HALF - 2}
+            fill="none"
+            stroke="#4ade8055"
+            strokeWidth={1}
+          />
 
           {/* Temple */}
           <rect
@@ -113,6 +140,20 @@ export default function MinimapOverlay({ onClose }: MinimapOverlayProps) {
               />
             );
           })}
+
+          {/* Mushroom Merchant — distinct marker so players know where the
+              cosmetic shop is. Rendered as a small mushroom emoji via a
+              <text> element so it's instantly recognizable at a glance,
+              unlike the plain colored dots used for puzzles. */}
+          <text
+            x={merchant.x}
+            y={merchant.y}
+            fontSize={9}
+            textAnchor="middle"
+            dominantBaseline="central"
+          >
+            🍄
+          </text>
 
           {/* Player — distinct marker showing live position + facing */}
           <polygon
