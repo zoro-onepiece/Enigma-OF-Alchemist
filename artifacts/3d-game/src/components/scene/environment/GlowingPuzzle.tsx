@@ -4,6 +4,7 @@ import { Html, PositionalAudio } from "@react-three/drei";
 import * as THREE from "three";
 import { PLAYER_WORLD_POS } from "../../3d/Player";
 import { audioFileExists } from "../../../audio/sounds";
+import { speak, canTrigger } from "../../../audio/voice";
 import { useSoundStore } from "../../../store/soundStore";
 import { useGameStore } from "../../../store/gameStore";
 import SparkleFountain from "../effects/SparkleFountain";
@@ -99,6 +100,24 @@ interface ProximityEntry {
 const proximityRegistry = new Map<string, ProximityEntry>();
 let globalKeyListenerAttached = false;
 
+// Generic-but-flavorful hint lines — puzzles can be solved in any order, so
+// these deliberately avoid naming a specific mini-game/theme. A single
+// shared cooldown key (not per-puzzle) keeps a quick run past several
+// pedestals from queueing up a pile of hint lines back to back.
+const APPROACH_HINT_LINES = [
+  "This shrine holds one of the four seals. Solve its trial to claim a fragment of the old power.",
+  "Ancient magic slumbers here. Solve its trial, and let the shrine speak your name.",
+  "A trial guards this seal. Face it, and the garden will remember you.",
+];
+const APPROACH_HINT_COOLDOWN_MS = 20000;
+
+function speakApproachHint(): void {
+  if (!canTrigger("puzzle-approach-hint", APPROACH_HINT_COOLDOWN_MS)) return;
+  const line =
+    APPROACH_HINT_LINES[Math.floor(Math.random() * APPROACH_HINT_LINES.length)];
+  speak(line, { priority: true });
+}
+
 function ensureGlobalKeyListener() {
   if (globalKeyListenerAttached) return;
   globalKeyListenerAttached = true;
@@ -154,7 +173,10 @@ export default function GlowingPuzzle({
     proximityRegistry.set(id, { distance, solved: isSolved, activate });
 
     const nowInRange = !isSolved && distance <= PROXIMITY_RANGE;
-    if (nowInRange !== inRange) setInRange(nowInRange);
+    if (nowInRange !== inRange) {
+      setInRange(nowInRange);
+      if (nowInRange) speakApproachHint();
+    }
   });
 
   return (

@@ -14,12 +14,13 @@
  * wires straight to gameStore.solvePuzzle — awarding +100 score and
  * marking the puzzle solved) and only then does the puzzle close.
  */
-import { useState, type ReactElement } from "react";
+import { useEffect, useState, type ReactElement } from "react";
 import RuneMemoryGame from "./RuneMemoryGame";
 import AlchemyMatch3Game from "./AlchemyMatch3Game";
 import ElementalSudoku from "./games/ElementalSudoku";
 import SigilPairsGame from "./SigilPairsGame";
 import { useGameStore } from "../../store/gameStore";
+import { speak, canTrigger } from "../../audio/voice";
 
 // HP cost per lost mini-game attempt (10 losses = death at 100 max HP).
 // Single source of truth for all 4 games — each calls its own onLose() at
@@ -46,6 +47,17 @@ const ORDINAL_FLAVOR_TEXT = [
   "Something ancient is remembering your name.",
   "The final seal breaks. You feel... complete.",
 ];
+
+// Spoken counterpart to ORDINAL_FLAVOR_TEXT above — same indexing
+// (solvedCountBefore), same "any order" independence from which specific
+// puzzle this is.
+const ORDINAL_VOICE_LINES = [
+  "Yes! I can feel it — something ancient stirring inside you.",
+  "Two seals broken. The garden is starting to remember you.",
+  "Almost there. One shrine left standing between you and the truth.",
+  "That's the last one! Something is about to change...",
+];
+const ORDINAL_VOICE_COOLDOWN_MS = 20000;
 
 interface PuzzleConfig {
   name: string;
@@ -95,6 +107,21 @@ export default function PuzzleModal({
   const flavorText =
     ORDINAL_FLAVOR_TEXT[Math.min(solvedCountBefore, ORDINAL_FLAVOR_TEXT.length - 1)];
   const damagePlayer = useGameStore((s) => s.damagePlayer);
+
+  // Speak the ordinal encouragement line the instant this puzzle is won —
+  // same solvedCountBefore index as the ORDINAL_FLAVOR_TEXT shown above,
+  // gated by the shared trigger cooldown so a re-render never double-fires it.
+  useEffect(() => {
+    if (!victorious) return;
+    const line =
+      ORDINAL_VOICE_LINES[
+        Math.min(solvedCountBefore, ORDINAL_VOICE_LINES.length - 1)
+      ];
+    if (canTrigger(`puzzle-solved-${solvedCountBefore}`, ORDINAL_VOICE_COOLDOWN_MS)) {
+      speak(line, { priority: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [victorious]);
 
   const handleWin = () => {
     // eslint-disable-next-line no-console

@@ -24,6 +24,8 @@ import GameOverOverlay from "../story/GameOverOverlay";
 import { useGameStore } from "../../store/gameStore";
 import { ISLAND_SCALE } from "../../lib/worldCollision";
 import { initMusicOnFirstInteraction, playSfx } from "../../audio/sounds";
+import { speak, canTrigger } from "../../audio/voice";
+import SubtitleBar from "../story/SubtitleBar";
 import { useShowTouchControls } from "../../hooks/use-mobile";
 
 // Shared daytime sky color — used for the scene background, fog, and (via
@@ -166,6 +168,14 @@ export default function Scene({
     if (essences > prevEssences.current) {
       if (essences >= 4) {
         playSfx("victory", 0.7);
+        // Pre-finale line, spoken the instant the 4th essence lands — may
+        // overlap with FinaleOverlay's own appearance, which is fine.
+        if (canTrigger("puzzle-finale-reveal", 20000)) {
+          speak(
+            "Wait... I know this feeling. I know this place. I think... I think I've always known.",
+            { priority: true },
+          );
+        }
       } else {
         playSfx("chime", 0.6);
       }
@@ -308,6 +318,10 @@ export default function Scene({
           per the "don't touch GameHUD internals" rule, shares the same
           global mute flag as GameHUD's own speaker button. ─────────────── */}
       <AudioMuteToggle />
+
+      {/* ── Dialogue subtitles — shows whatever line voice.ts is currently
+          speaking (intro narration + in-game guidance triggers below). ──── */}
+      <SubtitleBar />
 
       {/* ── Task D: puzzle-location map overlay — toggled by "M" (desktop)
           or GameHUD's map icon (both/mobile). ──────────────────────────── */}

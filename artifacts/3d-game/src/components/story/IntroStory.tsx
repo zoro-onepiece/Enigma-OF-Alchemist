@@ -7,7 +7,9 @@
  * advance one at a time via a "Continue" click/tap; a skip button jumps
  * straight to the final "Begin" prompt for anyone who's seen it before.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { speak, cancelSpeech } from "../../audio/voice";
+import SubtitleBar from "./SubtitleBar";
 
 const PARAGRAPHS = [
   "The temple garden was once home to a legendary alchemist — the only being who ever mastered all four elements and conjured the Enigma Elixir, said to grant its bearer true alchemical mastery.",
@@ -23,6 +25,15 @@ export interface IntroStoryProps {
 export default function IntroStory({ onBegin }: IntroStoryProps) {
   const [index, setIndex] = useState(0);
   const isLast = index === PARAGRAPHS.length - 1;
+
+  // Narrate each paragraph as it's revealed. Cleanup cancels the current
+  // utterance the instant `index` changes (tap-to-advance early) or the
+  // component unmounts (skip / "Begin") — never two paragraphs talking
+  // over each other.
+  useEffect(() => {
+    speak(PARAGRAPHS[index]);
+    return () => cancelSpeech();
+  }, [index]);
 
   const advance = () => {
     if (isLast) {
@@ -113,6 +124,8 @@ export default function IntroStory({ onBegin }: IntroStoryProps) {
           </span>
         </button>
       </div>
+
+      <SubtitleBar />
 
       <style>{`
         @keyframes intro-fade-in {

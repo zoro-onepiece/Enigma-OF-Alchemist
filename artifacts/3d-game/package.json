@@ -78,6 +78,7 @@
   "dependencies": {
     "@magic-ext/oauth2": "^15.8.0",
     "@openfort/openfort-js": "^1.5.0",
+    "@openfort/openfort-node": "^0.10.8",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.1",
     "ethers": "^6.17.0",
