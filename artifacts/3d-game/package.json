@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --config vite.config.ts --host 0.0.0.0",
+    "dev": "NODE_OPTIONS=--max-old-space-size=8192 vite",
     "build": "vite build --config vite.config.ts",
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
     "typecheck": "tsc -p tsconfig.json --noEmit"
@@ -77,8 +77,6 @@
   },
   "dependencies": {
     "@magic-ext/oauth2": "^15.8.0",
-    "@openfort/openfort-js": "^1.5.0",
-    "@openfort/openfort-node": "^0.10.8",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.1",
     "ethers": "^6.17.0",

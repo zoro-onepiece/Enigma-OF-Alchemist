@@ -1,6 +1,8 @@
-@import "tailwindcss";
+@import "tailwindcss" source(none); /* RED ERROR AAYE TOH IGNORE KAREIN! */
 @import "tw-animate-css";
 @plugin "@tailwindcss/typography";
+@source "./**/*.{ts,tsx,js,jsx}";
+@source "../index.html";
 
 @custom-variant dark (&:is(.dark *));
 

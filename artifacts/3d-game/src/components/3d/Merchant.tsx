@@ -46,44 +46,44 @@ export default function Merchant() {
     });
 
     // 🔍 DEBUG LOGGING — merchant kahan spawn hua aur uski actual size kya hai
-    setTimeout(() => {
-      if (group.current) {
-        const box = new THREE.Box3().setFromObject(group.current);
-        const size = new THREE.Vector3();
-        box.getSize(size);
-        const center = new THREE.Vector3();
-        box.getCenter(center);
+    // setTimeout(() => {
+    //   if (group.current) {
+    //     const box = new THREE.Box3().setFromObject(group.current);
+    //     const size = new THREE.Vector3();
+    //     box.getSize(size);
+    //     const center = new THREE.Vector3();
+    //     box.getCenter(center);
 
-        console.log("🧑‍💼 ====== MERCHANT DEBUG ====== 🧑‍💼");
-        console.log("group.current exists:", !!group.current);
-        console.log("scene children count:", scene.children.length);
-        console.log("World Position (group):", group.current.position);
-        console.log(
-          "World Center (bounding box):",
-          `X: ${center.x.toFixed(2)}, Y: ${center.y.toFixed(2)}, Z: ${center.z.toFixed(2)}`,
-        );
-        console.log(
-          "Actual World Size:",
-          `W: ${size.x.toFixed(3)}, H: ${size.y.toFixed(3)}, D: ${size.z.toFixed(3)}`,
-        );
-        console.log(
-          "Is size zero/tiny? (mesh missing or scale wrong):",
-          size.x < 0.01 && size.y < 0.01 && size.z < 0.01,
-        );
-        console.log("Visible flag:", group.current.visible);
-        console.log("Mesh names found:");
-        scene.traverse((child) => {
-          if ((child as THREE.Mesh).isMesh) {
-            console.log("  -", child.name, "| visible:", child.visible);
-          }
-        });
-        console.log("================================");
-      } else {
-        console.error(
-          "❌ Merchant group.current is NULL — component may not be mounted!",
-        );
-      }
-    }, 1500);
+    //     console.log("🧑‍💼 ====== MERCHANT DEBUG ====== 🧑‍💼");
+    //     console.log("group.current exists:", !!group.current);
+    //     console.log("scene children count:", scene.children.length);
+    //     console.log("World Position (group):", group.current.position);
+    //     console.log(
+    //       "World Center (bounding box):",
+    //       `X: ${center.x.toFixed(2)}, Y: ${center.y.toFixed(2)}, Z: ${center.z.toFixed(2)}`,
+    //     );
+    //     console.log(
+    //       "Actual World Size:",
+    //       `W: ${size.x.toFixed(3)}, H: ${size.y.toFixed(3)}, D: ${size.z.toFixed(3)}`,
+    //     );
+    //     console.log(
+    //       "Is size zero/tiny? (mesh missing or scale wrong):",
+    //       size.x < 0.01 && size.y < 0.01 && size.z < 0.01,
+    //     );
+    //     console.log("Visible flag:", group.current.visible);
+    //     console.log("Mesh names found:");
+    //     scene.traverse((child) => {
+    //       if ((child as THREE.Mesh).isMesh) {
+    //         console.log("  -", child.name, "| visible:", child.visible);
+    //       }
+    //     });
+    //     console.log("================================");
+    //   } else {
+    //     console.error(
+    //       "❌ Merchant group.current is NULL — component may not be mounted!",
+    //     );
+    //   }
+    // }, 1500);
   }, [actions, scene]);
 
   const spawnPosition: [number, number, number] = DEBUG_SPAWN_NEAR_PLAYER

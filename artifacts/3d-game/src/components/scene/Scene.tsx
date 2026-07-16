@@ -290,7 +290,8 @@ export default function Scene({
             models are loaded here. */}
           <GameEnvironment />
           {/* ── Merchant ──────────────────────────────────────────────────── */}
-          <Merchant /> {/* <--- YAHAN MERCHANT ADD KAREIN */}
+          <Merchant /> 
+          {/* --- YAHAN MERCHANT ADD KAREIN */}
           {/* ── Player ────────────────────────────────────────────────────── */}
           <Player />
         </Canvas>

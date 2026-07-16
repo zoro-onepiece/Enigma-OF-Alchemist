@@ -21,6 +21,7 @@
  */
 import { Router, Request, Response } from "express";
 import { ethers } from "ethers";
+import Openfort from '@openfort/openfort-node';
 
 const router = Router();
 
@@ -41,7 +42,10 @@ router.post("/", async (req: Request, res: Response) => {
   }
 
   const contractAddress = process.env.NFT_CONTRACT_ADDRESS;
-  const openfortKey = process.env.OPENFORT_SECRET_KEY;
+  // const openfortkey = process.env.OPENFORT_SECRET_KEY;
+   const openfortKey = new Openfort(process.env.OPENFORT_SECRET_KEY!, {
+  walletSecret: process.env.OPENFORT_WALLET_SECRET!,
+});
 
   if (!contractAddress || !openfortKey) {
     req.log.warn("NFT_CONTRACT_ADDRESS or OPENFORT_SECRET_KEY not set");
