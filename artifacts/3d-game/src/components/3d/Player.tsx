@@ -445,12 +445,26 @@
 //     </Suspense>
 //   );
 // }
-import { Suspense, useRef, useEffect, useState, useMemo } from "react";
+import { Suspense, useRef, useEffect, useState, useMemo, forwardRef, useImperativeHandle } from "react";
 import { useGLTF, useAnimations, useKeyboardControls } from "@react-three/drei";
 import { useFrame, useThree, createPortal } from "@react-three/fiber";
 import * as THREE from "three";
 import { resolveMove, clampToBoundary } from "../../lib/worldCollision";
 import { touchMove } from "../../lib/touchControls";
+import { useGameStore, type SkinId } from "../../store/gameStore";
+
+// Merchant-purchased skin -> GLB path (see ShopInventoryModal.tsx for the
+// matching skin catalog). Falls back to the default rigged model when no
+// skin is equipped.
+const DEFAULT_PLAYER_MODEL = "/final_player3.glb";
+const SKIN_MODEL_PATHS: Record<SkinId, string> = {
+  1: "/models/player_red.glb", // Crimson Flare
+  2: "/models/player_orange.glb", // Amber Ember
+  3: "/models/player_purple.glb", // Mystic Amethyst
+};
+useGLTF.preload(SKIN_MODEL_PATHS[1]);
+useGLTF.preload(SKIN_MODEL_PATHS[2]);
+useGLTF.preload(SKIN_MODEL_PATHS[3]);
 
 export const PLAYER_SPAWN: [number, number, number] = [0, 0, 0];
 export const PLAYER_WORLD_POS = new THREE.Vector3(...PLAYER_SPAWN);
@@ -531,6 +545,84 @@ const _target = new THREE.Vector3();
 const _camOffset = new THREE.Vector3();
 const _desiredCamPos = new THREE.Vector3();
 
+export interface AnimatedCharacterHandle {
+  crossFadeTo: (name: string, duration?: number, once?: boolean) => void;
+}
+
+interface AnimatedCharacterProps {
+  scene: THREE.Object3D;
+  animations: THREE.AnimationClip[];
+  position: [number, number, number];
+  modelPath: string;
+}
+
+/**
+ * Owns exactly the model-swap-sensitive piece: the AnimationMixer bound to
+ * whichever skin GLB is currently equipped. Rendered with `key={modelPath}`
+ * by PlayerModel below, so React fully unmounts and remounts this component
+ * on every skin swap rather than re-rendering it in place.
+ *
+ * That key is load-bearing, not decorative: drei's useAnimations creates its
+ * AnimationMixer via `useState(() => new AnimationMixer())` — a lazy
+ * initializer that runs exactly once per component instance and is never
+ * recreated on a later re-render, no matter how many times `animations`/
+ * `scene` change. Without the remount, the same mixer instance would persist
+ * across every skin change, accumulating internal per-root/per-clip binding
+ * state against an ancestor whose mounted child scene keeps changing
+ * underneath it — which is why actions existed (their names showed up in the
+ * debug log) but never visibly drove any bone on the newly swapped model.
+ * Forcing a full remount here guarantees a genuinely fresh mixer, with
+ * nothing left over from the previous skin, every time.
+ */
+const AnimatedCharacter = forwardRef<AnimatedCharacterHandle, AnimatedCharacterProps>(
+  function AnimatedCharacter({ scene, animations, position, modelPath }, ref) {
+    // Binding directly against `scene` (the loaded GLTF root itself, not an
+    // outer wrapper) rather than an ancestor group — useAnimations accepts a
+    // plain Object3D for this — so there is no ambiguity about which node
+    // tree the mixer searches for bone names.
+    const { actions } = useAnimations(animations, scene);
+    const activeAction = useRef<THREE.AnimationAction | null>(null);
+
+    useEffect(() => {
+      console.log("🎬 Available animations for", modelPath, ":", Object.keys(actions));
+    }, [actions, modelPath]);
+
+    const crossFadeTo = (name: string, duration = 0.25, once = false) => {
+      const next = actions[name];
+      if (!next || next === activeAction.current) return;
+
+      next.reset();
+      if (once) {
+        next.setLoop(THREE.LoopOnce, 1);
+        next.clampWhenFinished = true;
+      } else {
+        next.setLoop(THREE.LoopRepeat, Infinity);
+      }
+      next.enabled = true;
+      next.play();
+
+      if (activeAction.current) {
+        activeAction.current.crossFadeTo(next, duration, true);
+      } else {
+        next.fadeIn(duration);
+      }
+      activeAction.current = next;
+    };
+
+    useImperativeHandle(ref, () => ({ crossFadeTo }), [actions]);
+
+    useEffect(() => {
+      // Fresh mixer every mount (see class doc above) — always a plain
+      // fadeIn, never a stale cross-mixer crossFadeTo, since activeAction
+      // starts null for every new instance of this component.
+      crossFadeTo("idle", 0.3);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [actions]);
+
+    return <primitive object={scene} position={position} />;
+  },
+);
+
 function PlayerModel() {
   const group = useRef<THREE.Group>(null);
   const { camera, gl } = useThree();
@@ -544,56 +636,37 @@ function PlayerModel() {
     };
   }, []);
 
-  const { scene, animations } = useGLTF("/final_player3.glb");
-  const { actions, mixer } = useAnimations(animations, group);
+  // One-off read, outside the useFrame loop — the only gameStore dependency
+  // in this file, purely to pick which GLB to load (see SKIN_MODEL_PATHS
+  // above). Movement/camera state stays fully decoupled from gameStore, as
+  // established by teleportPlayerToSpawn below.
+  const equippedSkin = useGameStore((s) => s.equippedSkin);
+  const modelPath = equippedSkin ? SKIN_MODEL_PATHS[equippedSkin] : DEFAULT_PLAYER_MODEL;
+
+  const { scene, animations } = useGLTF(modelPath);
+  const animRef = useRef<AnimatedCharacterHandle>(null);
 
   const { scene: gunSceneSrc } = useGLTF("/gun.glb");
   const gunScene = useMemo(() => gunSceneSrc.clone(), [gunSceneSrc]);
 
-  // --- NEW: Skin Color State ---
-  const [skinColor, setSkinColor] = useState<string>("#ffffff");
-
-  // --- NEW: Keybinds for Testing Colors (1, 2, 3, 4) ---
+  // --- DEBUG: quick skin-swap test keybinds (1/2/3/4) ---
+  // Supersedes the old Digit1-4 cloth-color-tint debug block now that real
+  // skin GLB swapping exists (equippedSkin -> SKIN_MODEL_PATHS above) — this
+  // exercises the actual swap path directly via gameStore, bypassing the
+  // shop's ownership check, so all 3 skins can be cycled without buying them
+  // first. Mapping is what was asked for while testing, not the SkinId
+  // ordering: 1=red(Crimson Flare, id 1), 2=purple(Mystic Amethyst, id 3),
+  // 3=orange(Amber Ember, id 2), 4=back to the default final_player3 rig.
   useEffect(() => {
-    const handleColorKeys = (e: KeyboardEvent) => {
-      if (e.code === "Digit1") setSkinColor("#ff4444"); // Red
-      if (e.code === "Digit2") setSkinColor("#a020f0"); // Purple/Lavender
-      if (e.code === "Digit3") setSkinColor("#ffb347"); // Autumn Yellow
-      if (e.code === "Digit4") setSkinColor("#ffffff"); // Default (White/Original)
+    const handleSkinTestKeys = (e: KeyboardEvent) => {
+      if (e.code === "Digit1") useGameStore.getState().setGameState({ equippedSkin: 1 });
+      if (e.code === "Digit2") useGameStore.getState().setGameState({ equippedSkin: 3 });
+      if (e.code === "Digit3") useGameStore.getState().setGameState({ equippedSkin: 2 });
+      if (e.code === "Digit4") useGameStore.getState().setGameState({ equippedSkin: null });
     };
-    window.addEventListener("keydown", handleColorKeys);
-    return () => window.removeEventListener("keydown", handleColorKeys);
+    window.addEventListener("keydown", handleSkinTestKeys);
+    return () => window.removeEventListener("keydown", handleSkinTestKeys);
   }, []);
-
-  // --- NEW: Apply Color to Clothes Only ---
-  useEffect(() => {
-    scene.traverse((child) => {
-      if ((child as THREE.Mesh).isMesh) {
-        const mesh = child as THREE.Mesh;
-        if (mesh.material) {
-          // Material ko array ya single object dono cases mein handle karein
-          const materials = Array.isArray(mesh.material)
-            ? mesh.material
-            : [mesh.material];
-
-          materials.forEach((mat: any) => {
-            const matName = (mat.name ?? "").toLowerCase();
-            // final_player3.glb ki actual material names: Miyu_Cloth.010 /
-            // Miyu_Cloth.011 hi kapron (clothes) hain. Baqi (Miyu_Head,
-            // Miyu_Body, Miyu_Hair, Miyu_Hair_LBS_Outline,
-            // LBS_Outline_Material — jo cloth/hair/head sab ke outlines
-            // mein shared hai) mein "skin"/"face"/"hair"/"eye" jaisay words
-            // nahi aatay, isliye purana deny-list unhein bhi tint kar deta
-            // tha. Allow-list sirf "cloth" naam wali materials ko target
-            // karta hai.
-            if (matName.includes("cloth") && mat.color) {
-              mat.color.set(skinColor);
-            }
-          });
-        }
-      }
-    });
-  }, [scene, skinColor]);
 
   const { modelOffset, rawHeight } = useMemo(() => {
     scene.updateMatrixWorld(true);
@@ -644,8 +717,6 @@ function PlayerModel() {
   const [rightHand, setRightHand] = useState<THREE.Bone | null>(null);
   const [isGunEquipped, setIsGunEquipped] = useState(false);
 
-  const activeAction = useRef<THREE.AnimationAction | null>(null);
-
   const [subscribeKeys, getKeys] = useKeyboardControls<PlayerControl>();
 
   const yaw = useRef(Math.PI);
@@ -658,32 +729,6 @@ function PlayerModel() {
   const lastMouse = useRef({ x: 0, y: 0 });
   const camInitialized = useRef(false);
 
-  const crossFadeTo = (name: string, duration = 0.25, once = false) => {
-    const next = actions[name];
-    if (!next || next === activeAction.current) return;
-
-    next.reset();
-    if (once) {
-      next.setLoop(THREE.LoopOnce, 1);
-      next.clampWhenFinished = true;
-    } else {
-      next.setLoop(THREE.LoopRepeat, Infinity);
-    }
-    next.enabled = true;
-    next.play();
-
-    if (activeAction.current) {
-      activeAction.current.crossFadeTo(next, duration, true);
-    } else {
-      next.fadeIn(duration);
-    }
-    activeAction.current = next;
-  };
-
-  useEffect(() => {
-    crossFadeTo("idle", 0.3);
-  }, [actions]);
-
   useEffect(() => {
     return subscribeKeys(
       (state) => state.toggleWeapon,
@@ -692,8 +737,6 @@ function PlayerModel() {
       },
     );
   }, [subscribeKeys]);
-
-  void mixer;
 
   useEffect(() => {
     let hand: THREE.Bone | null = null;
@@ -871,11 +914,11 @@ function PlayerModel() {
     camera.lookAt(_target);
 
     if (moving) {
-      crossFadeTo(sprint ? "run" : "walk", 0.25);
+      animRef.current?.crossFadeTo(sprint ? "run" : "walk", 0.25);
     } else if (isGunEquipped) {
-      crossFadeTo("gun", 0.25);
+      animRef.current?.crossFadeTo("gun", 0.25);
     } else {
-      crossFadeTo("idle", 0.3);
+      animRef.current?.crossFadeTo("idle", 0.3);
     }
 
     PLAYER_WORLD_POS.copy(g.position);
@@ -889,8 +932,12 @@ function PlayerModel() {
       scale={PLAYER_SCALE}
       dispose={null}
     >
-      <primitive
-        object={scene}
+      <AnimatedCharacter
+        key={modelPath}
+        ref={animRef}
+        scene={scene}
+        animations={animations}
+        modelPath={modelPath}
         position={[modelOffset.x, modelOffset.y, modelOffset.z]}
       />
       {rightHand &&

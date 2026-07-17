@@ -1,6 +1,13 @@
-import { Suspense, useRef, useEffect } from "react";
-import { useGLTF, useAnimations } from "@react-three/drei";
+import { Suspense, useRef, useEffect, useState } from "react";
+import { useFrame } from "@react-three/fiber";
+import { useGLTF, useAnimations, Html } from "@react-three/drei";
 import * as THREE from "three";
+import { useGameStore } from "../../store/gameStore";
+import { PLAYER_WORLD_POS } from "./Player";
+
+// How close (world units, XZ-plane) the player must be to see the "Press E
+// to Trade" prompt and have E open the shop.
+const INTERACT_RADIUS = 4;
 
 // Exported so MinimapOverlay.tsx can plot the merchant's marker using the
 // exact same coordinate the 3D scene actually places him at — same pattern
@@ -22,6 +29,10 @@ export default function Merchant() {
   const group = useRef<THREE.Group>(null);
   const { scene, animations } = useGLTF("/merchant.glb");
   const { actions } = useAnimations(animations, group);
+
+  const [nearby, setNearby] = useState(false);
+  const openInventory = useGameStore((s) => s.openInventory);
+  const phase = useGameStore((s) => s.phase);
 
   useEffect(() => {
     const actionName = Object.keys(actions)[0];
@@ -90,6 +101,36 @@ export default function Merchant() {
     ? [3, 0, 0] // right in front of / above player spawn — impossible to miss
     : MERCHANT_POSITION;
 
+  // Proximity check against the player's live world position (same
+  // PLAYER_WORLD_POS mutable ref Player.tsx updates every frame — see its
+  // teleportPlayerToSpawn comment for why this stays out of gameStore).
+  useFrame(() => {
+    const dx = spawnPosition[0] - PLAYER_WORLD_POS.x;
+    const dz = spawnPosition[2] - PLAYER_WORLD_POS.z;
+    const isNear = dx * dx + dz * dz <= INTERACT_RADIUS * INTERACT_RADIUS;
+    if (isNear !== nearby) setNearby(isNear);
+  });
+
+  useEffect(() => {
+    if (!nearby) return;
+    // Matches GlowingPuzzle.tsx's proven proximity-interact convention
+    // exactly: `e.key.toLowerCase() === "e"` (not `e.code`), because
+    // touchControls.ts's mobile "interact" button dispatches a synthetic
+    // `KeyboardEvent("keydown", { key: "e" })` with no `code` set — an
+    // `e.code === "KeyE"` check would silently never fire for touch users.
+    // Gating only excludes "dead" (not "requires phase === exploring") for
+    // the same reason: gameStore's default/steady-state phase during
+    // ordinary exploration is "menu" (nothing transitions it to
+    // "exploring" until the player's first puzzle open/close), so
+    // requiring "exploring" here would block E for anyone who reaches the
+    // Merchant before ever touching a puzzle.
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() === "e" && phase !== "dead") openInventory();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [nearby, phase, openInventory]);
+
   return (
     <Suspense fallback={null}>
       <group
@@ -101,6 +142,18 @@ export default function Merchant() {
       >
         <primitive object={scene} />
       </group>
+      {nearby && (
+        // Outside the scaled group above (scale={15} would blow up a local
+        // position offset) so this floats a fixed world-space distance
+        // above the merchant's head regardless of his model's scale.
+        <group position={[spawnPosition[0], spawnPosition[1] + 3, spawnPosition[2]]}>
+          <Html center distanceFactor={10} pointerEvents="none">
+            <div className="whitespace-nowrap rounded border border-amber-500/60 bg-black/70 px-3 py-1.5 text-xs text-white">
+              Press E to Trade
+            </div>
+          </Html>
+        </group>
+      )}
     </Suspense>
   );
 }

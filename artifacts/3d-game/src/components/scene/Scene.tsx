@@ -19,6 +19,7 @@ import FinaleOverlay from "../hud/FinaleOverlay";
 import MobileControls from "../hud/MobileControls";
 import MinimapOverlay from "../hud/MinimapOverlay";
 import PuzzleModal from "../puzzles/PuzzleModal";
+import ShopInventoryModal from "../hud/ShopInventoryModal";
 import SprintBreathSound from "../story/SprintBreathSound";
 import GameOverOverlay from "../story/GameOverOverlay";
 import { useGameStore } from "../../store/gameStore";
@@ -113,6 +114,8 @@ export default function Scene({
   const activePuzzleId = useGameStore((s) => s.puzzle.activeId);
   const closePuzzle = useGameStore((s) => s.closePuzzle);
   const solvePuzzle = useGameStore((s) => s.solvePuzzle);
+  const inventoryOpen = useGameStore((s) => s.inventoryOpen);
+  const closeInventory = useGameStore((s) => s.closeInventory);
   const finaleClaimed = useGameStore((s) => s.finaleClaimed);
   const [finaleOverlayDismissed, setFinaleOverlayDismissed] = useState(false);
 
@@ -361,6 +364,12 @@ export default function Scene({
           onSolved={solvePuzzle}
           solvedCountBefore={essences}
         />
+      )}
+
+      {/* ── Merchant shop/inventory modal — opened by Merchant.tsx's "Press E
+          to Trade" prompt when the player is nearby. ──────────────────────── */}
+      {gamePhase === "inventory" && inventoryOpen && (
+        <ShopInventoryModal playerAddress={walletAddress} onClose={closeInventory} />
       )}
 
       {/* ── Controls hint overlay — desktop-only; touch devices get the
