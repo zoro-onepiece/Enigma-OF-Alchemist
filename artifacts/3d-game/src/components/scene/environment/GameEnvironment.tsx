@@ -14,9 +14,11 @@ import Wildlife from "./Wildlife";
 import GlbButterflies from "./GlbButterfly";
 import FootstepAudio from "./FootstepAudio";
 import AmbientMotes from "../effects/AmbientMotes";
+import GrassField from "./GrassField";
 import { useGameStore } from "../../../store/gameStore";
 import { ISLAND_SCALE, GROUND_SIZE, BOUNDARY_RADIUS } from "../../../lib/worldCollision";
 import { playSfx } from "../../../audio/sounds";
+import { MERCHANT_POSITION } from "../../3d/Merchant";
 
 /**
  * GameEnvironment
@@ -161,11 +163,21 @@ export const PUZZLE_PLACEMENTS: { id: string; position: [number, number, number]
 // exactly where a player looks first. 2.0 keeps a comfortable margin
 // around the path's actual wander + stone radius instead.
 const GROUND_COVER_PATH_HALF_WIDTH_MULT = 2.0;
+// Merchant footprint is much bigger than a puzzle pedestal (scale=15 —
+// see Merchant.tsx), so grass needs a wider clearance than
+// PUZZLE_CLEAR_RADIUS to avoid poking through his model/stall.
+const MERCHANT_CLEAR_RADIUS = 6;
 
 function isClearForGroundCover(x: number, z: number) {
   if (!isClearOfPathAndTemple(x, z, GROUND_COVER_PATH_HALF_WIDTH_MULT)) return false;
   for (const [px, pz] of PUZZLE_POSITIONS) {
     if (Math.hypot(x - px, z - pz) < PUZZLE_CLEAR_RADIUS) return false;
+  }
+  if (
+    Math.hypot(x - MERCHANT_POSITION[0], z - MERCHANT_POSITION[2]) <
+    MERCHANT_CLEAR_RADIUS
+  ) {
+    return false;
   }
   return true;
 }
@@ -345,15 +357,72 @@ export default function GameEnvironment() {
     return pots;
   }, []);
 
-  // Full-coverage ground flora via a jittered grid: the ground is divided
-  // into GRID_CELL_SIZE x GRID_CELL_SIZE cells, and each cell gets exactly
-  // one flower placement at a randomized offset within that cell (up to
-  // GRID_JITTER of the cell size). This is stratified sampling — every
-  // cell is guaranteed a placement (no bald patches, unlike pure random
-  // scatter or the earlier "cluster centers + tight radius" approach,
-  // which left ~99% of the walkable ground with nothing on it), while the
-  // per-cell jitter keeps it from reading as a robotic, perfectly-even
-  // grid the way an un-jittered grid would.
+  // Full-coverage ground grass via a jittered grid, tufted: each
+  // GRID_CELL_SIZE x GRID_CELL_SIZE cell gets BLADES_PER_TUFT individual
+  // grass-blade placements (not just one) — a lone thin blade every ~2
+  // units would still leave visible dirt between blades, unlike the old
+  // flower system where each grid placement was already a merged 5-bloom
+  // bed. Same stratified-sampling guarantee as before: every cell gets a
+  // tuft, so there are no bald patches. See GrassField.tsx for why this
+  // generates its own placements instead of using patch_of_grass.glb's
+  // built-in (broken) per-instance scatter data.
+  const grassField = useMemo(() => {
+    const rand = mulberry32(5150);
+    const blades: {
+      position: [number, number, number];
+      rotationY: number;
+      scale: number;
+    }[] = [];
+
+    const half = (GROUND_SIZE - 2) / 2;
+    const zOffset = -5 * ISLAND_SCALE;
+    const GRID_CELL_SIZE = 2.0; // world units per cell — tune density here
+    const GRID_JITTER = 0.85; // fraction of cell size a blade can drift
+    // Raised 4->13 (cell size left alone — simplest single-constant lever)
+    // for the ~200k density test, alongside GrassField.tsx's further
+    // blade-size reduction. ~191,912 final instances after exclusion
+    // zones — see GameEnvironment.tsx's own report for the exact count.
+    const BLADES_PER_TUFT = 13;
+
+    const minX = -half;
+    const maxX = half;
+    const minZ = zOffset - half;
+    const maxZ = zOffset + half;
+    const cols = Math.ceil((maxX - minX) / GRID_CELL_SIZE);
+    const rows = Math.ceil((maxZ - minZ) / GRID_CELL_SIZE);
+
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        const cellCenterX = minX + (col + 0.5) * GRID_CELL_SIZE;
+        const cellCenterZ = minZ + (row + 0.5) * GRID_CELL_SIZE;
+
+        for (let b = 0; b < BLADES_PER_TUFT; b++) {
+          const x =
+            cellCenterX + (rand() - 0.5) * GRID_CELL_SIZE * GRID_JITTER;
+          const z =
+            cellCenterZ + (rand() - 0.5) * GRID_CELL_SIZE * GRID_JITTER;
+
+          if (!isClearForGroundCover(x, z)) continue;
+
+          blades.push({
+            position: [x, 0, z],
+            rotationY: rand() * Math.PI * 2,
+            scale: 0.8 + rand() * 0.5,
+          });
+        }
+      }
+    }
+
+    return blades;
+  }, []);
+
+  // Anemone flower beds — restored as their own decorative layer alongside
+  // (not replacing) the grass above. A prior session mistakenly treated
+  // FlowerField as "the grass system" and removed it when GrassField was
+  // added; flowers and grass are actually two separate, complementary
+  // ground-cover layers. Same jittered-grid approach as grass, just a
+  // coarser cell (2.2) and one flower-bed placement per cell, matching
+  // this layer's original density.
   const flowerField = useMemo(() => {
     const rand = mulberry32(7070);
     const flowers: {
@@ -364,8 +433,8 @@ export default function GameEnvironment() {
 
     const half = (GROUND_SIZE - 2) / 2;
     const zOffset = -5 * ISLAND_SCALE;
-    const GRID_CELL_SIZE = 2.2; // world units per cell — tune density here
-    const GRID_JITTER = 0.85; // fraction of cell size the placement can drift
+    const GRID_CELL_SIZE = 2.2;
+    const GRID_JITTER = 0.85;
 
     const minX = -half;
     const maxX = half;
@@ -398,7 +467,7 @@ export default function GameEnvironment() {
 
   // A handful of anchor points near flower patches for butterflies to
   // flutter around (Task 4) — derived independently with the same seeded
-  // approach rather than reusing flowerField's internal per-flower loop
+  // approach rather than reusing grassField's internal per-blade loop
   // state, so it's a plain, self-contained useMemo.
   const flowerClusterCenters = useMemo<[number, number][]>(() => {
     const rand = mulberry32(3030);
@@ -483,8 +552,12 @@ export default function GameEnvironment() {
         />
       ))}
 
-      {/* Jittered-grid ground-flora scatter across the walkable ground — see
-          FlowerField.tsx. 2 instanced draw calls total, shadows off. */}
+      {/* Jittered-grid, tufted grass scatter across the walkable ground —
+          see GrassField.tsx. 1 instanced draw call, shadows off. */}
+      <GrassField placements={grassField} />
+
+      {/* Anemone flower beds — a separate decorative layer on top of the
+          grass, not a replacement for it. See FlowerField.tsx. */}
       <FlowerField placements={flowerField} />
 
       {/* Autumn tree grove — artist-made GLB species (replaces the old

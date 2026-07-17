@@ -10,6 +10,7 @@
  * particle libraries needed for a one-shot DOM effect.
  */
 import { useEffect, useMemo } from "react";
+import { playVoiceLine } from "../../audio/voice";
 
 export interface FinaleOverlayProps {
   score: number;
@@ -31,6 +32,17 @@ export default function FinaleOverlay({
       // eslint-disable-next-line no-console
       console.log("[Finale] onEnigmaComplete:", { score, essences });
     }
+    // chest_claim plays first (same trigger as the finale sequence
+    // itself), epilogue_thankyou queues right behind it as the closing
+    // line — the shared serial queue in voice.ts guarantees it waits for
+    // chest_claim to finish rather than talking over it.
+    playVoiceLine("chest_claim", "At last... the final treasure is yours.", {
+      priority: true,
+    });
+    playVoiceLine(
+      "epilogue_thankyou",
+      "Thank you for seeing this through with me. Truly.",
+    );
     // Only fire once, on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

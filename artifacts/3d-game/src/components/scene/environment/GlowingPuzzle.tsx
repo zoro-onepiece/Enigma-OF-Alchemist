@@ -4,9 +4,10 @@ import { Html, PositionalAudio } from "@react-three/drei";
 import * as THREE from "three";
 import { PLAYER_WORLD_POS } from "../../3d/Player";
 import { audioFileExists } from "../../../audio/sounds";
-import { speak, canTrigger } from "../../../audio/voice";
+import { playVoiceLine, canTrigger } from "../../../audio/voice";
 import { useSoundStore } from "../../../store/soundStore";
 import { useGameStore } from "../../../store/gameStore";
+import { registerBlocker } from "../../../lib/worldCollision";
 import SparkleFountain from "../effects/SparkleFountain";
 
 const HUM_PATH = "/audio/hum.mp3";
@@ -90,6 +91,15 @@ export interface GlowingPuzzleProps {
 export const SOLVED_COLOR = "#facc15";
 export const DEFAULT_PUZZLE_COLOR = "#a78bfa";
 const PROXIMITY_RANGE = 3.5;
+// Matches the stone base's actual visual footprint (cylinderGeometry
+// args={[0.65, 0.75, 0.3, 8]} below — 0.75 is the wider bottom radius, used
+// here so the collider covers the full visible base rather than
+// under-covering it). No collider was registered for pedestals at all
+// before this — confirmed via a repo-wide grep for registerBlocker(),
+// which only turned up the various tree components and JapaneseTemple —
+// that's the actual root cause of walking straight through them, not a
+// mismatched position/radius.
+const PEDESTAL_COLLIDER_RADIUS = 0.75;
 
 interface ProximityEntry {
   distance: number;
@@ -100,22 +110,22 @@ interface ProximityEntry {
 const proximityRegistry = new Map<string, ProximityEntry>();
 let globalKeyListenerAttached = false;
 
-// Generic-but-flavorful hint lines — puzzles can be solved in any order, so
-// these deliberately avoid naming a specific mini-game/theme. A single
+// Generic-but-flavorful hint line — puzzles can be solved in any order, so
+// this deliberately avoids naming a specific mini-game/theme. A single
 // shared cooldown key (not per-puzzle) keeps a quick run past several
 // pedestals from queueing up a pile of hint lines back to back.
-const APPROACH_HINT_LINES = [
-  "This shrine holds one of the four seals. Solve its trial to claim a fragment of the old power.",
-  "Ancient magic slumbers here. Solve its trial, and let the shrine speak your name.",
-  "A trial guards this seal. Face it, and the garden will remember you.",
-];
+//
+// Previously rotated randomly across 3 variant strings (spoken live via
+// speechSynthesis); now backed by a single pre-recorded MP3
+// (puzzle_hint_generic.mp3), so there's one fixed subtitle text to match —
+// kept as the first of the old 3 variants.
+const APPROACH_HINT_TEXT =
+  "This shrine holds one of the four seals. Solve its trial to claim a fragment of the old power.";
 const APPROACH_HINT_COOLDOWN_MS = 20000;
 
 function speakApproachHint(): void {
   if (!canTrigger("puzzle-approach-hint", APPROACH_HINT_COOLDOWN_MS)) return;
-  const line =
-    APPROACH_HINT_LINES[Math.floor(Math.random() * APPROACH_HINT_LINES.length)];
-  speak(line, { priority: true });
+  playVoiceLine("puzzle_hint_generic", APPROACH_HINT_TEXT, { priority: true });
 }
 
 function ensureGlobalKeyListener() {
@@ -149,6 +159,21 @@ export default function GlowingPuzzle({
   const soundMuted = useSoundStore((s) => s.muted);
 
   const activate = () => !isSolved && onActivate?.(id);
+
+  // Block movement through the pedestal's stone base — solved or not, it's
+  // always physically solid, so no isSolid() gating needed (unlike a future
+  // door-style blocker). Same registerBlocker() pattern the tree components
+  // and JapaneseTemple already use.
+  useEffect(() => {
+    return registerBlocker({
+      minX: position[0] - PEDESTAL_COLLIDER_RADIUS,
+      maxX: position[0] + PEDESTAL_COLLIDER_RADIUS,
+      minZ: position[2] - PEDESTAL_COLLIDER_RADIUS,
+      maxZ: position[2] + PEDESTAL_COLLIDER_RADIUS,
+      isSolid: () => true,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [position[0], position[2]]);
 
   // Keep the shared proximity registry in sync with this instance's latest
   // solved flag / activate handler even when they change between renders.

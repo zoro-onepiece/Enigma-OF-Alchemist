@@ -5,14 +5,29 @@
  * 0). Modeled after FinaleOverlay.tsx's dark stone/amber/emerald treatment,
  * with a somber red-tinted border/glow to distinguish "you died" from "you
  * won." "Try Again" is wired by the caller (Scene.tsx) to both
- * gameStore.restartRun() and Player.tsx's teleportPlayerToSpawn().
+ * gameStore.restartRun() and Player.tsx's teleportPlayerToSpawn() (and
+ * plays tryagain_line — see Scene.tsx's handleRestart).
  */
+import { useEffect } from "react";
+import { playVoiceLine } from "../../audio/voice";
+
 export interface GameOverOverlayProps {
   score: number;
   onRestart: () => void;
 }
 
 export default function GameOverOverlay({ score, onRestart }: GameOverOverlayProps) {
+  // Fires once on mount, same "onEnigmaComplete on mount" pattern
+  // FinaleOverlay.tsx uses for its own closing line.
+  useEffect(() => {
+    playVoiceLine(
+      "gameover_line",
+      "The garden claims another... but this isn't truly the end.",
+      { priority: true },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-sm font-serif">
       <div className="relative mx-4 max-w-lg rounded-2xl border-2 border-red-900/70 bg-gradient-to-b from-stone-900 to-emerald-950 p-5 text-center shadow-[0_0_60px_rgba(127,29,29,0.4)] sm:p-8">

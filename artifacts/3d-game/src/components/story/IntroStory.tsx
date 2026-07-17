@@ -10,7 +10,6 @@
 import { useEffect, useState } from "react";
 import { speak, cancelSpeech } from "../../audio/voice";
 import SubtitleBar from "./SubtitleBar";
-import SpeakingAvatar from "./SpeakingAvatar";
 
 const PARAGRAPHS = [
   "The temple garden was once home to a legendary alchemist — the only being who ever mastered all four elements and conjured the Enigma Elixir, said to grant its bearer true alchemical mastery.",
@@ -127,7 +126,6 @@ export default function IntroStory({ onBegin }: IntroStoryProps) {
       </div>
 
       <SubtitleBar />
-      <SpeakingAvatar />
 
       <style>{`
         @keyframes intro-fade-in {

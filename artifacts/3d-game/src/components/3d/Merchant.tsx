@@ -1,11 +1,28 @@
-import { Suspense, useRef, useEffect } from "react";
+import { Suspense, useRef, useEffect, useMemo } from "react";
 import { useGLTF, useAnimations } from "@react-three/drei";
+import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
+import { PLAYER_WORLD_POS } from "./Player";
+import { useGameStore } from "../../store/gameStore";
+import { playVoiceLine } from "../../audio/voice";
+import { registerBlocker } from "../../lib/worldCollision";
 
 // Exported so MinimapOverlay.tsx can plot the merchant's marker using the
 // exact same coordinate the 3D scene actually places him at — same pattern
 // as TEMPLE_POSITION/PUZZLE_PLACEMENTS in GameEnvironment.tsx.
 export const MERCHANT_POSITION: [number, number, number] = [15, 0, 20];
+
+// Same proximity-detection shape as GlowingPuzzle.tsx's pedestals (distance
+// to PLAYER_WORLD_POS, checked every frame) — didn't exist on the merchant
+// at all before this; needed so merchant_first_meet has something to
+// trigger off.
+const PROXIMITY_RANGE = 4;
+const merchantPos = new THREE.Vector3(...MERCHANT_POSITION);
+const MERCHANT_SCALE = 15;
+// Small margin added on top of the measured foot-bone spread so the
+// collider covers the model's actual body width, not just the exact foot
+// points.
+const COLLIDER_MARGIN = 0.4;
 
 // 🔍 DEBUG TOGGLE — set to true to force a bright pink material on every
 // mesh (confirms the model itself is actually rendering, independent of
@@ -22,6 +39,69 @@ export default function Merchant() {
   const group = useRef<THREE.Group>(null);
   const { scene, animations } = useGLTF("/merchant.glb");
   const { actions } = useAnimations(animations, group);
+
+  const spawnPosition: [number, number, number] = DEBUG_SPAWN_NEAR_PLAYER
+    ? [3, 0, 0] // right in front of / above player spawn — impossible to miss
+    : MERCHANT_POSITION;
+
+  // Collider radius, measured from the rig's own foot bones (L_foot_JNT /
+  // R_foot_JNT — confirmed via direct GLB skin/joint inspection) rather
+  // than Box3().setFromObject(scene), which — per this codebase's own
+  // documented pitfall — only reflects bind pose and ignores bone
+  // deformation; worse, a T/A-pose bind pose here would badly overstate
+  // the footprint since arms are typically spread wide in bind pose. Feet
+  // are far less affected by that than arms/hands, so their world-space
+  // spread (after updateMatrixWorld) is a reliable stand-in for the
+  // model's actual standing footprint. Merchant.tsx had NO collider
+  // registered at all before this (confirmed via a repo-wide grep for
+  // registerBlocker() — only the tree components and JapaneseTemple
+  // called it) — that's the root cause of walking straight through him,
+  // not a mismatched position/radius.
+  const footprintRadius = useMemo(() => {
+    scene.updateMatrixWorld(true);
+    let maxDist = 0;
+    scene.traverse((child) => {
+      if (/foot/i.test(child.name)) {
+        const p = new THREE.Vector3();
+        child.getWorldPosition(p);
+        maxDist = Math.max(maxDist, Math.hypot(p.x, p.z));
+      }
+    });
+    // Fallback if the rig's naming ever changes and no "foot" bone matches.
+    return (maxDist || 0.15) * MERCHANT_SCALE + COLLIDER_MARGIN;
+  }, [scene]);
+
+  // Uses spawnPosition (not the hardcoded MERCHANT_POSITION) so the
+  // collider always matches wherever the model is actually rendered,
+  // including under DEBUG_SPAWN_NEAR_PLAYER.
+  useEffect(() => {
+    return registerBlocker({
+      minX: spawnPosition[0] - footprintRadius,
+      maxX: spawnPosition[0] + footprintRadius,
+      minZ: spawnPosition[2] - footprintRadius,
+      maxZ: spawnPosition[2] + footprintRadius,
+      isSolid: () => true,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [footprintRadius, spawnPosition[0], spawnPosition[2]]);
+
+  // merchant_first_meet — fires once ever (gameStore.hasMetMerchant),
+  // the first time the player comes within range. Reads/writes the store
+  // via getState() inside the frame loop rather than subscribing, so this
+  // doesn't re-render every frame and always sees the latest flag — same
+  // pattern GlowingPuzzle.tsx's key listener uses for gameStore.phase.
+  useFrame(() => {
+    if (useGameStore.getState().hasMetMerchant) return;
+    const distance = PLAYER_WORLD_POS.distanceTo(merchantPos);
+    if (distance <= PROXIMITY_RANGE) {
+      useGameStore.getState().setHasMetMerchant();
+      playVoiceLine(
+        "merchant_first_meet",
+        "Ah, a new face! Come, browse my wares — alchemical trinkets, all genuine... mostly.",
+        { priority: true },
+      );
+    }
+  });
 
   useEffect(() => {
     const actionName = Object.keys(actions)[0];
@@ -86,17 +166,13 @@ export default function Merchant() {
     // }, 1500);
   }, [actions, scene]);
 
-  const spawnPosition: [number, number, number] = DEBUG_SPAWN_NEAR_PLAYER
-    ? [3, 0, 0] // right in front of / above player spawn — impossible to miss
-    : MERCHANT_POSITION;
-
   return (
     <Suspense fallback={null}>
       <group
         ref={group}
         position={spawnPosition}
         rotation={[0, -Math.PI / 4, 0]}
-        scale={15}
+        scale={MERCHANT_SCALE}
         dispose={null}
       >
         <primitive object={scene} />

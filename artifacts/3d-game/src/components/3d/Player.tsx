@@ -451,6 +451,7 @@ import { useFrame, useThree, createPortal } from "@react-three/fiber";
 import * as THREE from "three";
 import { resolveMove, clampToBoundary } from "../../lib/worldCollision";
 import { touchMove } from "../../lib/touchControls";
+import { playVoiceLine } from "../../audio/voice";
 
 export const PLAYER_SPAWN: [number, number, number] = [0, 0, 0];
 export const PLAYER_WORLD_POS = new THREE.Vector3(...PLAYER_SPAWN);
@@ -557,14 +558,33 @@ function PlayerModel() {
 
   // --- NEW: Skin Color State ---
   const [skinColor, setSkinColor] = useState<string>("#ffffff");
+  // Alternates skin_equipped/skin_equipped_alt across repeat equips so it
+  // doesn't feel robotic — this is the closest thing to a "skin shop" this
+  // codebase has (Digit1-3 = equip a color; Digit4 = reset to default, not
+  // an equip, so it doesn't play a line).
+  const skinLineToggleRef = useRef(0);
 
   // --- NEW: Keybinds for Testing Colors (1, 2, 3, 4) ---
   useEffect(() => {
     const handleColorKeys = (e: KeyboardEvent) => {
+      const isEquip =
+        e.code === "Digit1" || e.code === "Digit2" || e.code === "Digit3";
       if (e.code === "Digit1") setSkinColor("#ff4444"); // Red
       if (e.code === "Digit2") setSkinColor("#a020f0"); // Purple/Lavender
       if (e.code === "Digit3") setSkinColor("#ffb347"); // Autumn Yellow
       if (e.code === "Digit4") setSkinColor("#ffffff"); // Default (White/Original)
+
+      if (isEquip) {
+        const useAlt = skinLineToggleRef.current % 2 === 1;
+        skinLineToggleRef.current += 1;
+        playVoiceLine(
+          useAlt ? "skin_equipped_alt" : "skin_equipped",
+          useAlt
+            ? "Now that's a proper alchemist's attire."
+            : "A new look suits you.",
+          { priority: true },
+        );
+      }
     };
     window.addEventListener("keydown", handleColorKeys);
     return () => window.removeEventListener("keydown", handleColorKeys);

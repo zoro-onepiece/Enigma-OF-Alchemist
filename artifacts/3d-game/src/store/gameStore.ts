@@ -62,6 +62,13 @@ interface GameStore {
   // reappear once per login session, not survive across page refreshes.
   hasSeenIntro: boolean;
 
+  // Voice-line one-shot flags (Part A: pre-recorded dialogue integration).
+  // Same "in-memory, once per session, survives a Try Again retry" contract
+  // as hasSeenIntro above — a retry shouldn't replay "first meeting"/"first
+  // sprint" lines any more than it should replay the intro.
+  hasMetMerchant: boolean;
+  hasSprinted: boolean;
+
   // Actions
   setGameState: (patch: Partial<GameStore>) => void;
   damagePlayer: (amount: number) => void;
@@ -76,6 +83,8 @@ interface GameStore {
   closeInventory: () => void;
   claimFinale: () => void;
   setHasSeenIntro: () => void;
+  setHasMetMerchant: () => void;
+  setHasSprinted: () => void;
   // Death + restart: resets the run back to a fresh start after Game Over's
   // "Try Again" — full heal, puzzles/score/phase reset, world position
   // reset (via Player.tsx's teleportPlayerToSpawn, called by the caller
@@ -108,6 +117,8 @@ export const useGameStore = create<GameStore>((set) => ({
   ...createInitialRunState(),
   phase: "menu",
   hasSeenIntro: false,
+  hasMetMerchant: false,
+  hasSprinted: false,
 
   // ─── Actions ─────────────────────────────────────────────────────────────────
   setGameState: (patch) => set(patch),
@@ -160,11 +171,15 @@ export const useGameStore = create<GameStore>((set) => ({
   claimFinale: () => set({ finaleClaimed: true }),
 
   setHasSeenIntro: () => set({ hasSeenIntro: true }),
+  setHasMetMerchant: () => set({ hasMetMerchant: true }),
+  setHasSprinted: () => set({ hasSprinted: true }),
 
   restartRun: () =>
     set((s) => ({
       ...createInitialRunState(),
       phase: "exploring",
       hasSeenIntro: s.hasSeenIntro,
+      hasMetMerchant: s.hasMetMerchant,
+      hasSprinted: s.hasSprinted,
     })),
 }));

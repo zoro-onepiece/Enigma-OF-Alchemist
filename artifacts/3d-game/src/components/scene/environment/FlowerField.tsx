@@ -60,10 +60,10 @@ const RECENTER_OFFSET = new THREE.Vector3(0.3245, -0.1065, 0);
 const AXIS_FIX_ROTATION = new THREE.Euler(-Math.PI / 2, 0, 0);
 const SOURCE_HEIGHT = 16.418; // true stem-base-to-petal-tip height (was local Z)
 
-// Ground flower height, per spec: 0.3-0.5 world units (below the
-// character's knee) so each flower bed reads as small ground flora, not a
-// waist-high clump.
-const TARGET_HEIGHT = 0.45;
+// Ground flower height. Reduced further (0.45 -> 0.315 -> 0.22) so flower
+// beds read as smaller/more delicate relative to the character, still
+// planted as small ground flora rather than a waist-high clump.
+const TARGET_HEIGHT = 0.22;
 
 // Sink the base slightly below y=0 (world units, applied after scaling) so
 // the flowers look embedded/rooted in the ground instead of floating on

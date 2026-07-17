@@ -9,7 +9,8 @@
       "Bash(node -e ' *)",
       "Bash(node *)",
       "Bash(pnpm build *)",
-      "Bash(xargs -0 grep -l \"player_red\\\\.glb\\\\|player_orange\\\\.glb\\\\|player_purple\\\\.glb\")"
+      "Bash(xargs -0 grep -l \"player_red\\\\.glb\\\\|player_orange\\\\.glb\\\\|player_purple\\\\.glb\")",
+      "Bash(pnpm run *)"
     ]
   }
 }

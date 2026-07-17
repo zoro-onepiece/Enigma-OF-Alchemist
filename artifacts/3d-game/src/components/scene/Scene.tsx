@@ -12,7 +12,7 @@ import * as THREE from "three";
 import Lighting, { SUN_POSITION } from "./Lighting";
 import GameEnvironment from "./environment/GameEnvironment";
 import Player, { playerKeyboardMap, teleportPlayerToSpawn } from "../3d/Player";
-import SprintAura from "../3d/SprintAura";
+import SprintLeaves from "../3d/SprintLeaves";
 import Merchant from "../3d/Merchant"; // <--- YAHAN IMPORT ADD KAREIN
 import GameHUD from "../hud/GameHUD";
 import AudioMuteToggle from "../hud/AudioMuteToggle";
@@ -21,11 +21,12 @@ import MobileControls from "../hud/MobileControls";
 import MinimapOverlay from "../hud/MinimapOverlay";
 import PuzzleModal from "../puzzles/PuzzleModal";
 import SprintFootstepSound from "../story/SprintFootstepSound";
+import IdleReminder from "../story/IdleReminder";
 import GameOverOverlay from "../story/GameOverOverlay";
 import { useGameStore } from "../../store/gameStore";
 import { ISLAND_SCALE } from "../../lib/worldCollision";
 import { initMusicOnFirstInteraction, playSfx } from "../../audio/sounds";
-import { speak, canTrigger } from "../../audio/voice";
+import { playVoiceLine, canTrigger } from "../../audio/voice";
 import SubtitleBar from "../story/SubtitleBar";
 import { useShowTouchControls } from "../../hooks/use-mobile";
 
@@ -152,6 +153,9 @@ export default function Scene({
   const handleRestart = () => {
     restartRun();
     teleportPlayerToSpawn();
+    playVoiceLine("tryagain_line", "Let's try that again, shall we?", {
+      priority: true,
+    });
   };
 
   // Arm the "start music after first interaction" listener once.
@@ -172,7 +176,8 @@ export default function Scene({
         // Pre-finale line, spoken the instant the 4th essence lands — may
         // overlap with FinaleOverlay's own appearance, which is fine.
         if (canTrigger("puzzle-finale-reveal", 20000)) {
-          speak(
+          playVoiceLine(
+            "prefinale_line",
             "Wait... I know this feeling. I know this place. I think... I think I've always known.",
             { priority: true },
           );
@@ -237,7 +242,11 @@ export default function Scene({
             mieDirectionalG={0.7}
           />
           <Environment preset="park" background={false} />
-          <Clouds material={THREE.MeshBasicMaterial} limit={40} range={60}>
+          {/* limit raised from 40 to 90 alongside the cloud count below —
+              drei's <Clouds> shares this instance budget across every
+              <Cloud> child, so more clouds need more headroom or the later
+              ones would visibly thin out. */}
+          <Clouds material={THREE.MeshBasicMaterial} limit={90} range={60}>
             <Cloud
               seed={1}
               position={[-30, 55, -40]}
@@ -270,6 +279,50 @@ export default function Scene({
               opacity={0.6}
               speed={0.05}
             />
+            {/* ── Added for wider/denser sky coverage — same style (soft
+                opacity 0.5-0.6, similar volume/bounds/speed ranges),
+                spread further out and across a wider altitude band so the
+                sky doesn't read as empty away from the original 4. ────── */}
+            <Cloud
+              seed={33}
+              position={[-70, 62, 10]}
+              bounds={[42, 9, 42]}
+              volume={20}
+              opacity={0.5}
+              speed={0.055}
+            />
+            <Cloud
+              seed={44}
+              position={[60, 40, -60]}
+              bounds={[38, 8, 38]}
+              volume={19}
+              opacity={0.55}
+              speed={0.06}
+            />
+            <Cloud
+              seed={55}
+              position={[-45, 85, -70]}
+              bounds={[48, 11, 48]}
+              volume={25}
+              opacity={0.5}
+              speed={0.045}
+            />
+            <Cloud
+              seed={66}
+              position={[80, 72, 40]}
+              bounds={[44, 9, 44]}
+              volume={22}
+              opacity={0.5}
+              speed={0.065}
+            />
+            <Cloud
+              seed={77}
+              position={[5, 90, -10]}
+              bounds={[36, 7, 36]}
+              volume={17}
+              opacity={0.6}
+              speed={0.05}
+            />
           </Clouds>
           {/* Explicit background + fog so the horizon blends seamlessly with
             the sky at any zoom/camera distance — no white gaps beyond the
@@ -295,15 +348,17 @@ export default function Scene({
           {/* --- YAHAN MERCHANT ADD KAREIN */}
           {/* ── Player ────────────────────────────────────────────────────── */}
           <Player />
-          {/* ── Sprint glow/aura — sibling to Player, does not touch its
-            movement/animation state machine. See SprintAura.tsx. ────────── */}
-          <SprintAura />
+          {/* ── Sprint flying-leaves effect — sibling to Player, does not
+            touch its movement/animation state machine. See
+            SprintLeaves.tsx. ──────────────────────────────────────────── */}
+          <SprintLeaves />
         </Canvas>
 
         {/* ── Sprint footstep SFX — surrounding wiring only, reads the same
           KeyboardControls context Player.tsx reads; Player.tsx's movement/
           speed logic itself is untouched. ────────────────────────────────── */}
         <SprintFootstepSound />
+        <IdleReminder />
       </KeyboardControls>
 
       {/* ── Alchemist HUD overlay ────────────────────────────────────────── */}

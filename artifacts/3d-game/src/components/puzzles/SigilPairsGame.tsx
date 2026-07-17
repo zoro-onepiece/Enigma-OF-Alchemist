@@ -6,8 +6,9 @@
  * back after 800ms. Winning requires finding all 6 pairs within 20 flips;
  * going over the limit reshuffles the board for a fresh retry.
  */
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePuzzleSound } from "./usePuzzleSound";
+import { playVoiceLine } from "../../audio/voice";
 
 interface SigilPairsGameProps {
   onWin: () => void;
@@ -16,6 +17,7 @@ interface SigilPairsGameProps {
 
 const SYMBOLS = ["🜁", "🜂", "🜃", "🜄", "🜚", "☿"];
 const MAX_FLIPS = 20;
+const LOW_FLIPS_THRESHOLD = 5;
 
 interface Card {
   id: number;
@@ -43,6 +45,22 @@ export default function SigilPairsGame({ onWin, onLose }: SigilPairsGameProps) {
   const [flipsUsed, setFlipsUsed] = useState(0);
   const [busy, setBusy] = useState(false);
   const { playFlip, playMatch, playWrong, playWin } = usePuzzleSound();
+  // Fires minigame_lowflips once per crossing of the threshold, reset on
+  // reshuffle so a fresh board can trigger it again — same shape as
+  // AlchemyMatch3Game's lowMovesFiredRef.
+  const lowFlipsFiredRef = useRef(false);
+
+  useEffect(() => {
+    const remaining = MAX_FLIPS - flipsUsed;
+    if (remaining <= LOW_FLIPS_THRESHOLD && remaining > 0 && !lowFlipsFiredRef.current) {
+      lowFlipsFiredRef.current = true;
+      playVoiceLine(
+        "minigame_lowflips",
+        "Focus. You don't have many flips left.",
+        { priority: true },
+      );
+    }
+  }, [flipsUsed]);
 
   // Hitting the flip limit is this game's fail/retry transition — like
   // Alchemy Match-3 running out of moves, it discards all progress
@@ -56,6 +74,7 @@ export default function SigilPairsGame({ onWin, onLose }: SigilPairsGameProps) {
     setFlippedIds([]);
     setFlipsUsed(0);
     setBusy(false);
+    lowFlipsFiredRef.current = false;
   };
 
   const handleCardClick = (id: number) => {

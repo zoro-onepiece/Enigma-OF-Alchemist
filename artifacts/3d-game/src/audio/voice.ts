@@ -1,40 +1,30 @@
 /**
  * voice.ts
  *
- * Browser-native Web Speech API (window.speechSynthesis) dialogue system —
- * no external API, no backend, no key. Provides a serial speech queue (so
- * overlapping triggers never cut each other off), female-voice preference,
- * and a subscribable "currently speaking" value SubtitleBar.tsx renders.
+ * Character dialogue system. Two playback modes share one serial queue so
+ * they never talk over each other regardless of which kind either side is:
+ *   - Pre-recorded lines (playVoiceLine) — 22 MP3s under public/audio/,
+ *     covering every named character-dialogue trigger in the game.
+ *   - Live speech synthesis (speak) — kept only for IntroStory's 4 opening
+ *     paragraphs, which have no pre-recorded audio and never will (they're
+ *     player-paced prose, not short reactive lines).
  *
  * Design goals mirror sounds.ts:
- *   - Never throw / never spam the console — if speechSynthesis doesn't
- *     exist, every export here silently no-ops.
+ *   - Never throw / never spam the console — a missing/undecodable file (or
+ *     unsupported speechSynthesis) just silently advances to the next
+ *     queued line instead of getting stuck.
  *   - Respects the same global `useSoundStore` mute flag as the rest of the
  *     game's audio, so there is exactly one mute concept in the app.
  *   - Waits for a user gesture the same way sounds.ts's runAfterInteraction
- *     does — some browsers block speechSynthesis.speak() before one too.
+ *     does — browsers block both speechSynthesis and Audio.play() before one.
  */
 import { useSoundStore } from "../store/soundStore";
+import { audioFileExists } from "./sounds";
 
-// ─── Voice tuning ───────────────────────────────────────────────────────────
-// A convincing "cute young girl" read comes mostly from *which voice* is
-// selected below, not from pitch-shifting — cranking pitch on a generic/low
-// quality voice just sounds distorted. Pitch is now a light finishing touch
-// on top of the best real voice available (0-2 scale, default 1); rate is
-// nudged only slightly above default (1.0) so lines stay intelligible.
+// ─── Voice tuning (speechSynthesis fallback only — see file header) ────────
 const VOICE_PITCH = 1.25;
 const VOICE_RATE = 1.1;
 
-// Ranked, most-preferred first — substrings matched case-insensitively
-// against SpeechSynthesisVoice.name. These are real voice names known to
-// sound younger/brighter than the generic OS default across platforms:
-//   - "Aria"/"Jenny"/"Michelle"/"Ana"/"Emma" — modern natural/neural voices
-//     (Edge's OneCore/online voices, some Android/Chrome OS voices).
-//   - "Zira" — classic Windows SAPI female voice; brighter than "David"/
-//     "Mark" but noticeably more robotic than the natural voices above, so
-//     it's ranked last among the named picks.
-// Retune this list after checking the console log printed below against
-// whatever's actually installed/reported in the target browser.
 const PREFERRED_VOICE_KEYWORDS = [
   "aria",
   "jenny",
@@ -45,12 +35,10 @@ const PREFERRED_VOICE_KEYWORDS = [
   "zira",
 ];
 
-const supported =
+const ttsSupported =
   typeof window !== "undefined" && "speechSynthesis" in window;
 
-// ─── Voice selection ────────────────────────────────────────────────────────
-// getVoices() can return an empty array on first call — the real list loads
-// asynchronously and fires 'voiceschanged' once ready (Chrome in particular).
+// ─── Voice selection (speechSynthesis fallback only) ───────────────────────
 let selectedVoice: SpeechSynthesisVoice | null = null;
 let selectedVoiceLabel = "speech synthesis unsupported";
 
@@ -91,22 +79,21 @@ function pickVoice(voices: SpeechSynthesisVoice[]): void {
   console.info(`[voice.ts] ${selectedVoiceLabel}`);
 }
 
-if (supported) {
+if (ttsSupported) {
   pickVoice(window.speechSynthesis.getVoices());
   window.speechSynthesis.onvoiceschanged = () => {
     pickVoice(window.speechSynthesis.getVoices());
   };
 }
 
-/** For diagnostics/reporting only — which voice speak() is using. */
+/** For diagnostics/reporting only — which voice speak() falls back to. */
 export function getSelectedVoiceLabel(): string {
   return selectedVoiceLabel;
 }
 
-/** Re-logs the full available-voice list on demand (e.g. from the console)
- * for quickly comparing options without needing to reload. */
+/** Re-logs the full available-voice list on demand. */
 export function logAvailableVoices(): void {
-  if (!supported) return;
+  if (!ttsSupported) return;
   logVoiceList(window.speechSynthesis.getVoices());
 }
 
@@ -159,82 +146,173 @@ export function subscribeSpeech(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
-// ─── Serial speech queue ────────────────────────────────────────────────────
-let queue: string[] = [];
+// ─── The 22 pre-recorded character lines under public/audio/ ──────────────
+export type VoiceLineName =
+  | "greeting_welcome"
+  | "merchant_first_meet"
+  | "skin_equipped"
+  | "skin_equipped_alt"
+  | "damage_reaction_1"
+  | "damage_reaction_2"
+  | "gameover_line"
+  | "tryagain_line"
+  | "minigame_lowmoves"
+  | "minigame_lowflips"
+  | "minigame_fail"
+  | "sprint_first_time"
+  | "idle_reminder"
+  | "minimap_first_open"
+  | "chest_claim"
+  | "epilogue_thankyou"
+  | "puzzle_hint_generic"
+  | "puzzle_solved_1st"
+  | "puzzle_solved_2nd"
+  | "puzzle_solved_3rd"
+  | "puzzle_solved_4th"
+  | "prefinale_line";
+
+const VOICE_LINE_BASE = "/audio/";
+
+// ─── Serial queue — shared by both playback modes ──────────────────────────
+interface QueueItem {
+  text: string;
+  /** Path to a pre-recorded line, or null for live speechSynthesis. */
+  audioPath: string | null;
+}
+
+let queue: QueueItem[] = [];
 let speaking = false;
+// Tracks the in-flight <audio> element (if the current item is a
+// pre-recorded line) so cancelSpeech() can stop it immediately instead of
+// letting it play to completion.
+let currentAudioEl: HTMLAudioElement | null = null;
 
 function playNext(): void {
   if (speaking) return;
-  if (!supported || useSoundStore.getState().muted) {
+  if (useSoundStore.getState().muted) {
     queue = [];
     setCurrentText(null);
     return;
   }
   const next = queue.shift();
-  if (next === undefined) {
+  if (!next) {
     setCurrentText(null);
     return;
   }
   speaking = true;
-  setCurrentText(next);
-  const utterance = new SpeechSynthesisUtterance(next);
+  setCurrentText(next.text);
+
+  const advance = () => {
+    speaking = false;
+    currentAudioEl = null;
+    playNext();
+  };
+
+  if (next.audioPath) {
+    const path = next.audioPath;
+    audioFileExists(path).then((ok) => {
+      // Re-check mute/queue-clear state after the async existence check —
+      // mute could have fired while this was in flight.
+      if (!ok || useSoundStore.getState().muted) {
+        advance();
+        return;
+      }
+      const el = new Audio(path);
+      el.volume = 1;
+      el.muted = useSoundStore.getState().muted;
+      currentAudioEl = el;
+      el.onended = advance;
+      el.onerror = advance;
+      el.play().catch(advance);
+    });
+    return;
+  }
+
+  if (!ttsSupported) {
+    advance();
+    return;
+  }
+  const utterance = new SpeechSynthesisUtterance(next.text);
   if (selectedVoice) utterance.voice = selectedVoice;
   utterance.pitch = VOICE_PITCH;
   utterance.rate = VOICE_RATE;
-  const advance = () => {
-    speaking = false;
-    playNext();
-  };
   utterance.onend = advance;
   utterance.onerror = advance;
   window.speechSynthesis.speak(utterance);
 }
 
-/** Speak a line of dialogue. Normal lines queue after whatever's already
- * playing; `priority: true` moves the line to the front of the queue
- * (without interrupting speech already in progress) so guidance dialogue
- * isn't stuck behind a long backlog. No-ops entirely if speechSynthesis is
- * unsupported, muted, or the page hasn't seen a user gesture yet (queued
- * until it does, same as sounds.ts's music/ambience). */
+/** Speak a line via live speechSynthesis — used only by IntroStory's
+ * opening paragraphs now (see file header); every reactive in-game
+ * dialogue trigger uses playVoiceLine() instead. Normal lines queue after
+ * whatever's already playing; `priority: true` moves the line to the front
+ * (without interrupting speech already in progress). No-ops if
+ * speechSynthesis is unsupported, muted, or before the first user gesture
+ * (queued until it arrives). */
 export function speak(text: string, opts?: { priority?: boolean }): void {
-  if (!supported || !text) return;
+  if (!text) return;
   runAfterInteraction(() => {
     if (useSoundStore.getState().muted) return;
-    if (opts?.priority) {
-      queue.unshift(text);
-    } else {
-      queue.push(text);
-    }
+    const item: QueueItem = { text, audioPath: null };
+    if (opts?.priority) queue.unshift(item);
+    else queue.push(item);
     playNext();
   });
 }
 
-/** Stops whatever's currently playing and clears the queue immediately —
- * call when mute is toggled on, or when the caller wants to talk over
- * itself intentionally (e.g. IntroStory's tap-to-advance). */
-export function cancelSpeech(): void {
-  if (!supported) return;
-  queue = [];
-  speaking = false;
-  window.speechSynthesis.cancel();
-  setCurrentText(null);
-}
-
-if (supported) {
-  useSoundStore.subscribe((s) => {
-    if (s.muted) cancelSpeech();
+/** Play one of the 22 pre-recorded character lines. `subtitleText` is shown
+ * in SubtitleBar while it plays — a fixed, hand-written string (not derived
+ * from the audio via STT), same as every other line in this file. Goes
+ * through the exact same serial queue/priority/mute gating as speak(), so
+ * a recorded line and a speechSynthesis line (or two recorded lines) never
+ * overlap. No-ops if muted or before the first user gesture (queued until
+ * it arrives); a missing/corrupt file just silently advances past it. */
+export function playVoiceLine(
+  name: VoiceLineName,
+  subtitleText: string,
+  opts?: { priority?: boolean },
+): void {
+  if (!subtitleText) return;
+  runAfterInteraction(() => {
+    if (useSoundStore.getState().muted) return;
+    const item: QueueItem = {
+      text: subtitleText,
+      audioPath: `${VOICE_LINE_BASE}${name}.mp3`,
+    };
+    if (opts?.priority) queue.unshift(item);
+    else queue.push(item);
+    playNext();
   });
 }
 
+/** Stops whatever's currently playing (recorded line or speechSynthesis)
+ * and clears the queue immediately — call when mute is toggled on, or when
+ * the caller wants to talk over itself intentionally (e.g. IntroStory's
+ * tap-to-advance). */
+export function cancelSpeech(): void {
+  queue = [];
+  speaking = false;
+  if (currentAudioEl) {
+    currentAudioEl.pause();
+    currentAudioEl = null;
+  }
+  if (ttsSupported) window.speechSynthesis.cancel();
+  setCurrentText(null);
+}
+
+useSoundStore.subscribe((s) => {
+  if (s.muted) cancelSpeech();
+});
+
 // ─── Per-trigger cooldown gate ──────────────────────────────────────────────
 // Shared by every in-game dialogue trigger point (puzzle-approach hints,
-// ordinal solve encouragement, the 4/4 finale line) so "don't repeat within
-// ~20s" is enforced in exactly one place instead of once per call site.
+// ordinal solve encouragement, the 4/4 finale line, etc.) so "don't repeat
+// within N seconds" is enforced in exactly one place instead of once per
+// call site.
 const lastTriggeredAt = new Map<string, number>();
 
 /** Returns true (and arms the cooldown) at most once per `cooldownMs` for a
- * given trigger key. Callers should only call speak() when this returns
- * true. */
+ * given trigger key. Callers should only call speak()/playVoiceLine() when
+ * this returns true. */
 export function canTrigger(key: string, cooldownMs = 20000): boolean {
   const now = Date.now();
   const last = lastTriggeredAt.get(key);
