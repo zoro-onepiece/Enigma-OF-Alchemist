@@ -223,4 +223,6 @@ export default function FlowerField({ placements }: FlowerFieldProps) {
   );
 }
 
-useGLTF.preload(MODEL_PATH);
+// Not eagerly preloaded — see Player.tsx's identical note. This flower GLB
+// (~3MB) now only fetches once FlowerField actually mounts (gameplay), not
+// on every page load including the login screen.

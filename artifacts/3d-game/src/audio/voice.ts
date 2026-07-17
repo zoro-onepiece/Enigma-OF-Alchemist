@@ -16,6 +16,35 @@
  */
 import { useSoundStore } from "../store/soundStore";
 
+// ─── Voice tuning ───────────────────────────────────────────────────────────
+// A convincing "cute young girl" read comes mostly from *which voice* is
+// selected below, not from pitch-shifting — cranking pitch on a generic/low
+// quality voice just sounds distorted. Pitch is now a light finishing touch
+// on top of the best real voice available (0-2 scale, default 1); rate is
+// nudged only slightly above default (1.0) so lines stay intelligible.
+const VOICE_PITCH = 1.25;
+const VOICE_RATE = 1.1;
+
+// Ranked, most-preferred first — substrings matched case-insensitively
+// against SpeechSynthesisVoice.name. These are real voice names known to
+// sound younger/brighter than the generic OS default across platforms:
+//   - "Aria"/"Jenny"/"Michelle"/"Ana"/"Emma" — modern natural/neural voices
+//     (Edge's OneCore/online voices, some Android/Chrome OS voices).
+//   - "Zira" — classic Windows SAPI female voice; brighter than "David"/
+//     "Mark" but noticeably more robotic than the natural voices above, so
+//     it's ranked last among the named picks.
+// Retune this list after checking the console log printed below against
+// whatever's actually installed/reported in the target browser.
+const PREFERRED_VOICE_KEYWORDS = [
+  "aria",
+  "jenny",
+  "michelle",
+  "ana",
+  "emma",
+  "samantha",
+  "zira",
+];
+
 const supported =
   typeof window !== "undefined" && "speechSynthesis" in window;
 
@@ -25,19 +54,41 @@ const supported =
 let selectedVoice: SpeechSynthesisVoice | null = null;
 let selectedVoiceLabel = "speech synthesis unsupported";
 
+function logVoiceList(voices: SpeechSynthesisVoice[]): void {
+  console.info(
+    `[voice.ts] ${voices.length} voice(s) available:`,
+    voices.map((v) => `${v.name} (${v.lang}${v.default ? ", default" : ""})`),
+  );
+}
+
 function pickVoice(voices: SpeechSynthesisVoice[]): void {
   if (!voices.length) return;
+  logVoiceList(voices);
+
+  for (const keyword of PREFERRED_VOICE_KEYWORDS) {
+    const match = voices.find((v) => v.name.toLowerCase().includes(keyword));
+    if (match) {
+      selectedVoice = match;
+      selectedVoiceLabel = `preferred voice selected: ${match.name} (matched "${keyword}")`;
+      console.info(`[voice.ts] ${selectedVoiceLabel}`);
+      return;
+    }
+  }
+
   const female = voices.find((v) => /female/i.test(v.name));
   if (female) {
     selectedVoice = female;
-    selectedVoiceLabel = `female voice selected: ${female.name}`;
+    selectedVoiceLabel = `no preferred-keyword match, using female voice: ${female.name}`;
+    console.info(`[voice.ts] ${selectedVoiceLabel}`);
     return;
   }
+
   const fallback = voices.find((v) => v.default) ?? voices[0];
   selectedVoice = fallback ?? null;
   selectedVoiceLabel = fallback
-    ? `no female voice found, using default (${fallback.name})`
-    : "no female voice found, using default";
+    ? `no female/preferred voice found, using default (${fallback.name})`
+    : "no female/preferred voice found, using default";
+  console.info(`[voice.ts] ${selectedVoiceLabel}`);
 }
 
 if (supported) {
@@ -50,6 +101,13 @@ if (supported) {
 /** For diagnostics/reporting only — which voice speak() is using. */
 export function getSelectedVoiceLabel(): string {
   return selectedVoiceLabel;
+}
+
+/** Re-logs the full available-voice list on demand (e.g. from the console)
+ * for quickly comparing options without needing to reload. */
+export function logAvailableVoices(): void {
+  if (!supported) return;
+  logVoiceList(window.speechSynthesis.getVoices());
 }
 
 // ─── Gesture gate — mirrors sounds.ts's runAfterInteraction ────────────────
@@ -121,6 +179,8 @@ function playNext(): void {
   setCurrentText(next);
   const utterance = new SpeechSynthesisUtterance(next);
   if (selectedVoice) utterance.voice = selectedVoice;
+  utterance.pitch = VOICE_PITCH;
+  utterance.rate = VOICE_RATE;
   const advance = () => {
     speaking = false;
     playNext();

@@ -491,9 +491,14 @@ export const playerKeyboardMap = [
   { name: PlayerControl.toggleWeapon, keys: ["KeyQ"] },
 ];
 
-useGLTF.preload("/final_player3.glb");
-useGLTF.preload("/gun.glb");
-
+// No longer eagerly preloaded here — this file is bundled into the same
+// single JS chunk as the login screen (no code-splitting in this app), so
+// a module-top-level useGLTF.preload() fired instantly on ANY page load,
+// before login, fetching final_player3.glb (~12MB) + gun.glb (~1MB)
+// regardless of whether the player ever reaches gameplay. useGLTF() inside
+// PlayerModel below still loads it — just lazily, when <Player/> actually
+// mounts (i.e. after login + intro), which is the earliest point it's
+// actually needed.
 const WALK_SPEED = 2.2;
 const RUN_SPEED = 4.5;
 const TURN_LERP = 10;

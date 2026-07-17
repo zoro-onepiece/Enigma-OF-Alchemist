@@ -5,7 +5,11 @@
       "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:24982/)",
       "Bash(curl -s http://localhost:24982/)",
       "Bash(npx playwright *)",
-      "Bash(ldconfig -p)"
+      "Bash(ldconfig -p)",
+      "Bash(node -e ' *)",
+      "Bash(node *)",
+      "Bash(pnpm build *)",
+      "Bash(xargs -0 grep -l \"player_red\\\\.glb\\\\|player_orange\\\\.glb\\\\|player_purple\\\\.glb\")"
     ]
   }
 }

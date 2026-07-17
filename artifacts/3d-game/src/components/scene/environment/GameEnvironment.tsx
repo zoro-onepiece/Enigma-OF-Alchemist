@@ -90,9 +90,16 @@ const EXTENDED_GROUND_Y = -0.03;
 // Keep scattered props clear of the pathway (a loose corridor around x=0)
 // and the temple's footprint — corridor/footprint checks scale with
 // ISLAND_SCALE too since the path/temple positions moved outward with it.
-function isClearOfPathAndTemple(x: number, z: number) {
+// `pathHalfWidthMult` is overridable per-caller (see isClearForGroundCover
+// below) — trees keep the original wide 4.5 clearance, but ground cover
+// uses a much narrower one; see that call site for why.
+function isClearOfPathAndTemple(
+  x: number,
+  z: number,
+  pathHalfWidthMult = 4.5,
+) {
   const nearPath =
-    Math.abs(x) < 4.5 * ISLAND_SCALE &&
+    Math.abs(x) < pathHalfWidthMult * ISLAND_SCALE &&
     z > -34 * ISLAND_SCALE &&
     z < 5 * ISLAND_SCALE;
   const nearTemple = Math.hypot(x - TEMPLE_POSITION[0], z - TEMPLE_POSITION[2]) < 7;
@@ -141,8 +148,22 @@ export const PUZZLE_PLACEMENTS: { id: string; position: [number, number, number]
 // Extra exclusion for dense ground cover (grass/flowers only) — on top of
 // the path/temple clearing, also keep a small clear radius around each
 // puzzle pedestal so tufts/flowers don't clip through them.
+//
+// Uses a narrower path corridor (2.0x vs trees' 4.5x = 5.5 vs 12.4 world
+// units each side) than isClearOfPathAndTemple's default. The 4.5
+// clearance trees use was sized to keep their trunks well clear of the
+// walkway; reusing that same number for ground cover meant clearing ~25
+// world units of width around the ENTIRE path — including the player's own
+// spawn point at (0,0) — versus the stepping-stone path itself
+// (Pathway.tsx) being only ~1.1 units wide. That's why the jittered-grid
+// grass fix still read as "not appearing": it WAS generating and rendering
+// correctly, just never within view near spawn or along the path, which is
+// exactly where a player looks first. 2.0 keeps a comfortable margin
+// around the path's actual wander + stone radius instead.
+const GROUND_COVER_PATH_HALF_WIDTH_MULT = 2.0;
+
 function isClearForGroundCover(x: number, z: number) {
-  if (!isClearOfPathAndTemple(x, z)) return false;
+  if (!isClearOfPathAndTemple(x, z, GROUND_COVER_PATH_HALF_WIDTH_MULT)) return false;
   for (const [px, pz] of PUZZLE_POSITIONS) {
     if (Math.hypot(x - px, z - pz) < PUZZLE_CLEAR_RADIUS) return false;
   }
@@ -324,11 +345,15 @@ export default function GameEnvironment() {
     return pots;
   }, []);
 
-  // Clustered wildflower scatter (300-600 instances) across the walkable
-  // ground. Rather than uniform rejection-sampling across the whole ground
-  // (which reads as an even sprinkle), we pick a handful of cluster
-  // centers and scatter flowers in a tight radius around each — natural
-  // clumped patches, same as real wildflowers growing where seeds fell.
+  // Full-coverage ground flora via a jittered grid: the ground is divided
+  // into GRID_CELL_SIZE x GRID_CELL_SIZE cells, and each cell gets exactly
+  // one flower placement at a randomized offset within that cell (up to
+  // GRID_JITTER of the cell size). This is stratified sampling — every
+  // cell is guaranteed a placement (no bald patches, unlike pure random
+  // scatter or the earlier "cluster centers + tight radius" approach,
+  // which left ~99% of the walkable ground with nothing on it), while the
+  // per-cell jitter keeps it from reading as a robotic, perfectly-even
+  // grid the way an un-jittered grid would.
   const flowerField = useMemo(() => {
     const rand = mulberry32(7070);
     const flowers: {
@@ -339,45 +364,33 @@ export default function GameEnvironment() {
 
     const half = (GROUND_SIZE - 2) / 2;
     const zOffset = -5 * ISLAND_SCALE;
-    // Scaled up linearly with the island (not by area) so the bigger garden
-    // still reads as densely flowered without ballooning instance count.
-    const targetCount = Math.round(450 * ISLAND_SCALE);
-    const clusterCount = Math.round(26 * ISLAND_SCALE);
-    const perCluster = Math.ceil(targetCount / clusterCount);
-    const clusterRadius = 2.2; // physical patch size stays the same
+    const GRID_CELL_SIZE = 2.2; // world units per cell — tune density here
+    const GRID_JITTER = 0.85; // fraction of cell size the placement can drift
 
-    let attempts = 0;
-    while (flowers.length < targetCount && attempts < clusterCount * 200) {
-      attempts++;
+    const minX = -half;
+    const maxX = half;
+    const minZ = zOffset - half;
+    const maxZ = zOffset + half;
+    const cols = Math.ceil((maxX - minX) / GRID_CELL_SIZE);
+    const rows = Math.ceil((maxZ - minZ) / GRID_CELL_SIZE);
 
-      const clusterIndex = Math.floor(flowers.length / perCluster);
-      if (clusterIndex >= clusterCount) break;
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        const cellCenterX = minX + (col + 0.5) * GRID_CELL_SIZE;
+        const cellCenterZ = minZ + (row + 0.5) * GRID_CELL_SIZE;
+        const x =
+          cellCenterX + (rand() - 0.5) * GRID_CELL_SIZE * GRID_JITTER;
+        const z =
+          cellCenterZ + (rand() - 0.5) * GRID_CELL_SIZE * GRID_JITTER;
 
-      // Rejection-sample a cluster center against the exclusion zones.
-      let cx = 0;
-      let cz = 0;
-      let found = false;
-      for (let tries = 0; tries < 40; tries++) {
-        cx = (rand() - 0.5) * half * 2;
-        cz = (rand() - 0.5) * half * 2 + zOffset;
-        if (isClearForGroundCover(cx, cz)) {
-          found = true;
-          break;
-        }
+        if (!isClearForGroundCover(x, z)) continue;
+
+        flowers.push({
+          position: [x, 0, z],
+          rotationY: rand() * Math.PI * 2,
+          scale: 0.8 + rand() * 0.6,
+        });
       }
-      if (!found) continue;
-
-      const angle = rand() * Math.PI * 2;
-      const r = rand() * clusterRadius;
-      const x = cx + Math.cos(angle) * r;
-      const z = cz + Math.sin(angle) * r;
-      if (!isClearForGroundCover(x, z)) continue;
-
-      flowers.push({
-        position: [x, 0, z],
-        rotationY: rand() * Math.PI * 2,
-        scale: 0.8 + rand() * 0.6,
-      });
     }
 
     return flowers;
@@ -470,8 +483,8 @@ export default function GameEnvironment() {
         />
       ))}
 
-      {/* Clustered wildflower scatter across the walkable ground — see
-          FlowerField.tsx. ~6 instanced draw calls total, shadows off. */}
+      {/* Jittered-grid ground-flora scatter across the walkable ground — see
+          FlowerField.tsx. 2 instanced draw calls total, shadows off. */}
       <FlowerField placements={flowerField} />
 
       {/* Autumn tree grove — artist-made GLB species (replaces the old

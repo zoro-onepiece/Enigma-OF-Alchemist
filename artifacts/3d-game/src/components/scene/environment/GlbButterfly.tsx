@@ -215,4 +215,6 @@ export default function GlbButterflies({
   );
 }
 
-useGLTF.preload(MODEL_PATH);
+// Not eagerly preloaded — see Player.tsx's identical note. This butterfly
+// GLB (~1.6MB) now only fetches once GlbButterflies actually mounts
+// (gameplay), not on every page load including the login screen.

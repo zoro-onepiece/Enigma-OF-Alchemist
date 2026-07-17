@@ -12,6 +12,7 @@ import * as THREE from "three";
 import Lighting, { SUN_POSITION } from "./Lighting";
 import GameEnvironment from "./environment/GameEnvironment";
 import Player, { playerKeyboardMap, teleportPlayerToSpawn } from "../3d/Player";
+import SprintAura from "../3d/SprintAura";
 import Merchant from "../3d/Merchant"; // <--- YAHAN IMPORT ADD KAREIN
 import GameHUD from "../hud/GameHUD";
 import AudioMuteToggle from "../hud/AudioMuteToggle";
@@ -19,7 +20,7 @@ import FinaleOverlay from "../hud/FinaleOverlay";
 import MobileControls from "../hud/MobileControls";
 import MinimapOverlay from "../hud/MinimapOverlay";
 import PuzzleModal from "../puzzles/PuzzleModal";
-import SprintBreathSound from "../story/SprintBreathSound";
+import SprintFootstepSound from "../story/SprintFootstepSound";
 import GameOverOverlay from "../story/GameOverOverlay";
 import { useGameStore } from "../../store/gameStore";
 import { ISLAND_SCALE } from "../../lib/worldCollision";
@@ -294,12 +295,15 @@ export default function Scene({
           {/* --- YAHAN MERCHANT ADD KAREIN */}
           {/* ── Player ────────────────────────────────────────────────────── */}
           <Player />
+          {/* ── Sprint glow/aura — sibling to Player, does not touch its
+            movement/animation state machine. See SprintAura.tsx. ────────── */}
+          <SprintAura />
         </Canvas>
 
-        {/* ── Sprint breathing SFX — surrounding wiring only, reads the same
+        {/* ── Sprint footstep SFX — surrounding wiring only, reads the same
           KeyboardControls context Player.tsx reads; Player.tsx's movement/
           speed logic itself is untouched. ────────────────────────────────── */}
-        <SprintBreathSound />
+        <SprintFootstepSound />
       </KeyboardControls>
 
       {/* ── Alchemist HUD overlay ────────────────────────────────────────── */}

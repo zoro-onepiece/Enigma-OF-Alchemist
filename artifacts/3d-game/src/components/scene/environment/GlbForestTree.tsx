@@ -139,4 +139,6 @@ export default function GlbForestTree({
   );
 }
 
-useGLTF.preload(MODEL_PATH);
+// Not eagerly preloaded — see Player.tsx's identical note. This tree GLB
+// (~10MB) now only fetches once GlbForestTree actually mounts (gameplay),
+// not on every page load including the login screen.

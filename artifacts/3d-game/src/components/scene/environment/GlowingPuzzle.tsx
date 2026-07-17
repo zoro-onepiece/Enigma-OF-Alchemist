@@ -169,8 +169,19 @@ export default function GlowingPuzzle({
         : 0.9 + Math.sin(state.clock.elapsedTime * 1.8) * 0.12;
     }
 
+    // Mutate the existing registry entry in place rather than allocating a
+    // new object every frame (this useFrame runs 60x/sec per pedestal,
+    // times 4 pedestals — a steady stream of small garbage otherwise).
+    // Only the very first frame for a given id allocates.
     const distance = PLAYER_WORLD_POS.distanceTo(puzzlePos.current);
-    proximityRegistry.set(id, { distance, solved: isSolved, activate });
+    const entry = proximityRegistry.get(id);
+    if (entry) {
+      entry.distance = distance;
+      entry.solved = isSolved;
+      entry.activate = activate;
+    } else {
+      proximityRegistry.set(id, { distance, solved: isSolved, activate });
+    }
 
     const nowInRange = !isSolved && distance <= PROXIMITY_RANGE;
     if (nowInRange !== inRange) {

@@ -110,4 +110,6 @@ export default function GlbAutumnTree({
   );
 }
 
-useGLTF.preload(MODEL_PATH);
+// Not eagerly preloaded — see Player.tsx's identical note. This tree GLB
+// (~20MB) now only fetches once GlbAutumnTree actually mounts (gameplay),
+// not on every page load including the login screen.
