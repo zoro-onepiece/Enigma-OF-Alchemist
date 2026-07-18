@@ -16,10 +16,16 @@ import { Suspense, useMemo, useRef } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { useGLTF, Center } from "@react-three/drei";
 import * as THREE from "three";
+import { clone as cloneSkeleton } from "three/examples/jsm/utils/SkeletonUtils.js";
 
 function SpinningSkin({ modelPath }: { modelPath: string }) {
   const { scene } = useGLTF(modelPath);
-  const cloned = useMemo(() => scene.clone(), [scene]);
+  // Plain Object3D.clone() leaves a cloned SkinnedMesh's `.skeleton.bones`
+  // pointing at the ORIGINAL (cached, shared) bones instead of this clone's
+  // own — a well-known three.js gotcha for rigged models. SkeletonUtils.clone
+  // re-binds the skeleton to the freshly cloned bones, so this preview never
+  // shares mutable bone state with Player.tsx's own instance of the same URL.
+  const cloned = useMemo(() => cloneSkeleton(scene) as THREE.Object3D, [scene]);
   const spinRef = useRef<THREE.Group>(null);
 
   useFrame((_state, delta) => {

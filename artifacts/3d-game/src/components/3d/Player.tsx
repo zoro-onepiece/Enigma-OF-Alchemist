@@ -449,6 +449,7 @@ import { Suspense, useRef, useEffect, useState, useMemo, forwardRef, useImperati
 import { useGLTF, useAnimations, useKeyboardControls } from "@react-three/drei";
 import { useFrame, useThree, createPortal } from "@react-three/fiber";
 import * as THREE from "three";
+import { clone as cloneSkeleton } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { resolveMove, clampToBoundary } from "../../lib/worldCollision";
 import { touchMove } from "../../lib/touchControls";
 import { useGameStore, type SkinId } from "../../store/gameStore";
@@ -623,50 +624,54 @@ const AnimatedCharacter = forwardRef<AnimatedCharacterHandle, AnimatedCharacterP
   },
 );
 
-function PlayerModel() {
-  const group = useRef<THREE.Group>(null);
-  const { camera, gl } = useThree();
+interface PlayerMeshProps {
+  modelPath: string;
+  gunScene: THREE.Object3D;
+  isGunEquipped: boolean;
+  onRawHeight: (height: number) => void;
+}
 
-  // Register/unregister the group ref for teleportPlayerToSpawn() above —
-  // purely an external-access registration, no movement/animation logic.
-  useEffect(() => {
-    playerGroupInstance = group.current;
-    return () => {
-      playerGroupInstance = null;
-    };
-  }, []);
+/**
+ * Owns useGLTF(modelPath) itself, plus everything derived from that
+ * specific scene (bone-based recentering, the right-hand bone for the gun
+ * portal). Rendered by PlayerModel below inside a Suspense boundary that
+ * wraps ONLY this component — not the whole PlayerModel.
+ *
+ * This split exists because of a real disappearing-character bug: when
+ * useGLTF(modelPath) has to genuinely suspend (the skin GLB hasn't finished
+ * loading yet — preloaded via useGLTF.preload, but preload only kicks off
+ * the fetch, it doesn't block), whatever Suspense boundary is the nearest
+ * ANCESTOR unmounts everything under it until the promise resolves. Before
+ * this split, that ancestor was the outer <Suspense> wrapping the entire
+ * PlayerModel (in the default-exported Player below) — so a genuine
+ * suspend during a skin switch tore down group, the camera-follow useFrame,
+ * and the playerGroupInstance ref registration along with the mesh, which
+ * is exactly the "character disappears until pressing keys a few more
+ * times" symptom: intermittent because it only happens when the target
+ * GLB's preload hadn't finished yet, and timing-dependent on exactly that
+ * network race. Scoping the Suspense to just this component means a
+ * genuine suspend now only blanks the mesh/gun portal for a moment, while
+ * group/camera/refs in PlayerModel stay mounted throughout.
+ */
+const PlayerMesh = forwardRef<AnimatedCharacterHandle, PlayerMeshProps>(function PlayerMesh(
+  { modelPath, gunScene, isGunEquipped, onRawHeight },
+  ref,
+) {
+  const { scene: cachedScene, animations } = useGLTF(modelPath);
 
-  // One-off read, outside the useFrame loop — the only gameStore dependency
-  // in this file, purely to pick which GLB to load (see SKIN_MODEL_PATHS
-  // above). Movement/camera state stays fully decoupled from gameStore, as
-  // established by teleportPlayerToSpawn below.
-  const equippedSkin = useGameStore((s) => s.equippedSkin);
-  const modelPath = equippedSkin ? SKIN_MODEL_PATHS[equippedSkin] : DEFAULT_PLAYER_MODEL;
+  // useGLTF caches and returns the SAME scene object for a given URL on
+  // every call, forever. Rendering/mutating that cached object directly
+  // (as this component used to) meant every remount — including switching
+  // away from and back to the same skin — reused one shared, already-bound
+  // SkinnedMesh/Skeleton instance. Cloning with SkeletonUtils.clone (not a
+  // plain .clone(), which leaves SkinnedMesh.skeleton pointing at the
+  // ORIGINAL bones instead of the newly cloned ones — a well-known three.js
+  // gotcha) gives each mount its own fully independent skeleton, so nothing
+  // about a previous or concurrent mount (including SkinThumbnail.tsx's own
+  // preview instance of the same URL) can leave this one's skinning broken.
+  const scene = useMemo(() => cloneSkeleton(cachedScene) as THREE.Object3D, [cachedScene]);
 
-  const { scene, animations } = useGLTF(modelPath);
-  const animRef = useRef<AnimatedCharacterHandle>(null);
-
-  const { scene: gunSceneSrc } = useGLTF("/gun.glb");
-  const gunScene = useMemo(() => gunSceneSrc.clone(), [gunSceneSrc]);
-
-  // --- DEBUG: quick skin-swap test keybinds (1/2/3/4) ---
-  // Supersedes the old Digit1-4 cloth-color-tint debug block now that real
-  // skin GLB swapping exists (equippedSkin -> SKIN_MODEL_PATHS above) — this
-  // exercises the actual swap path directly via gameStore, bypassing the
-  // shop's ownership check, so all 3 skins can be cycled without buying them
-  // first. Mapping is what was asked for while testing, not the SkinId
-  // ordering: 1=red(Crimson Flare, id 1), 2=purple(Mystic Amethyst, id 3),
-  // 3=orange(Amber Ember, id 2), 4=back to the default final_player3 rig.
-  useEffect(() => {
-    const handleSkinTestKeys = (e: KeyboardEvent) => {
-      if (e.code === "Digit1") useGameStore.getState().setGameState({ equippedSkin: 1 });
-      if (e.code === "Digit2") useGameStore.getState().setGameState({ equippedSkin: 3 });
-      if (e.code === "Digit3") useGameStore.getState().setGameState({ equippedSkin: 2 });
-      if (e.code === "Digit4") useGameStore.getState().setGameState({ equippedSkin: null });
-    };
-    window.addEventListener("keydown", handleSkinTestKeys);
-    return () => window.removeEventListener("keydown", handleSkinTestKeys);
-  }, []);
+  const [rightHand, setRightHand] = useState<THREE.Bone | null>(null);
 
   const { modelOffset, rawHeight } = useMemo(() => {
     scene.updateMatrixWorld(true);
@@ -705,6 +710,90 @@ function PlayerModel() {
     return { modelOffset: offset, rawHeight: height };
   }, [scene]);
 
+  useEffect(() => {
+    onRawHeight(rawHeight);
+  }, [rawHeight, onRawHeight]);
+
+  useEffect(() => {
+    let hand: THREE.Bone | null = null;
+    scene.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh) {
+        (child as THREE.Mesh).castShadow = true;
+        (child as THREE.Mesh).receiveShadow = true;
+      }
+      if (
+        (child as THREE.Bone).isBone &&
+        /(mixamorig)?right\s*hand/i.test(child.name)
+      ) {
+        hand = child as THREE.Bone;
+      }
+    });
+    setRightHand(hand);
+  }, [scene]);
+
+  return (
+    <>
+      <AnimatedCharacter
+        key={modelPath}
+        ref={ref}
+        scene={scene}
+        animations={animations}
+        modelPath={modelPath}
+        position={[modelOffset.x, modelOffset.y, modelOffset.z]}
+      />
+      {rightHand &&
+        isGunEquipped &&
+        createPortal(<primitive object={gunScene} />, rightHand)}
+    </>
+  );
+});
+
+function PlayerModel() {
+  const group = useRef<THREE.Group>(null);
+  const { camera, gl } = useThree();
+
+  // Register/unregister the group ref for teleportPlayerToSpawn() above —
+  // purely an external-access registration, no movement/animation logic.
+  useEffect(() => {
+    playerGroupInstance = group.current;
+    return () => {
+      playerGroupInstance = null;
+    };
+  }, []);
+
+  // One-off read, outside the useFrame loop — the only gameStore dependency
+  // in this file, purely to pick which GLB to load (see SKIN_MODEL_PATHS
+  // above). Movement/camera state stays fully decoupled from gameStore, as
+  // established by teleportPlayerToSpawn below.
+  const equippedSkin = useGameStore((s) => s.equippedSkin);
+  const modelPath = equippedSkin ? SKIN_MODEL_PATHS[equippedSkin] : DEFAULT_PLAYER_MODEL;
+
+  const animRef = useRef<AnimatedCharacterHandle>(null);
+  const [rawHeight, setRawHeight] = useState(1.7);
+
+  const { scene: gunSceneSrc } = useGLTF("/gun.glb");
+  const gunScene = useMemo(() => gunSceneSrc.clone(), [gunSceneSrc]);
+
+  // Quick-equip shortcuts for skins the player already owns (purchased via
+  // the Merchant shop — ShopInventoryModal.tsx's Equip button drives the
+  // exact same gameStore.equipSkin action, which no-ops if the skin isn't
+  // owned). These are a faster alternative to opening the shop each time,
+  // not a bypass: equipSkin() itself enforces ownership. Mapping: 1=Crimson
+  // Flare/red (id 1), 2=Mystic Amethyst/purple (id 3), 3=Amber Ember/orange
+  // (id 2), 4=back to the default final_player3 rig (always allowed, no
+  // ownership required for "no skin equipped").
+  useEffect(() => {
+    const handleSkinKeys = (e: KeyboardEvent) => {
+      const { equipSkin, setGameState } = useGameStore.getState();
+      if (e.code === "Digit1") equipSkin(1);
+      if (e.code === "Digit2") equipSkin(3);
+      if (e.code === "Digit3") equipSkin(2);
+      if (e.code === "Digit4") setGameState({ equippedSkin: null });
+    };
+    window.addEventListener("keydown", handleSkinKeys);
+    return () => window.removeEventListener("keydown", handleSkinKeys);
+  }, []);
+
   const characterHeight = rawHeight * PLAYER_SCALE;
   const camDistanceDefault = characterHeight * CAM_DISTANCE_HEIGHT_MULT;
   const camMinDistance = characterHeight * CAM_MIN_HEIGHT_MULT;
@@ -714,7 +803,6 @@ function PlayerModel() {
     [characterHeight],
   );
 
-  const [rightHand, setRightHand] = useState<THREE.Bone | null>(null);
   const [isGunEquipped, setIsGunEquipped] = useState(false);
 
   const [subscribeKeys, getKeys] = useKeyboardControls<PlayerControl>();
@@ -737,23 +825,6 @@ function PlayerModel() {
       },
     );
   }, [subscribeKeys]);
-
-  useEffect(() => {
-    let hand: THREE.Bone | null = null;
-    scene.traverse((child) => {
-      if ((child as THREE.Mesh).isMesh) {
-        (child as THREE.Mesh).castShadow = true;
-        (child as THREE.Mesh).receiveShadow = true;
-      }
-      if (
-        (child as THREE.Bone).isBone &&
-        /(mixamorig)?right\s*hand/i.test(child.name)
-      ) {
-        hand = child as THREE.Bone;
-      }
-    });
-    setRightHand(hand);
-  }, [scene]);
 
   useEffect(() => {
     const canvas = gl.domElement;
@@ -932,17 +1003,22 @@ function PlayerModel() {
       scale={PLAYER_SCALE}
       dispose={null}
     >
-      <AnimatedCharacter
-        key={modelPath}
-        ref={animRef}
-        scene={scene}
-        animations={animations}
-        modelPath={modelPath}
-        position={[modelOffset.x, modelOffset.y, modelOffset.z]}
-      />
-      {rightHand &&
-        isGunEquipped &&
-        createPortal(<primitive object={gunScene} />, rightHand)}
+      {/* Suspense scoped to JUST the mesh/animation-binding piece — see
+          PlayerMesh's doc comment for why this must NOT wrap the whole
+          PlayerModel (that was the disappearing-character bug: a genuine
+          suspend here used to tear down this entire group, the
+          camera-follow useFrame below, and playerGroupInstance along with
+          it). */}
+      <Suspense fallback={null}>
+        <PlayerMesh
+          key={modelPath}
+          ref={animRef}
+          modelPath={modelPath}
+          gunScene={gunScene}
+          isGunEquipped={isGunEquipped}
+          onRawHeight={setRawHeight}
+        />
+      </Suspense>
     </group>
   );
 }
