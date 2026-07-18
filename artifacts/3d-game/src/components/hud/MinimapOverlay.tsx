@@ -29,7 +29,7 @@ import {
 } from "../scene/environment/GlowingPuzzle";
 import { BOUNDARY_RADIUS } from "../../lib/worldCollision";
 import { useGameStore } from "../../store/gameStore";
-import { playVoiceLine } from "../../audio/voice";
+import { speak } from "../../audio/voice";
 
 export interface MinimapOverlayProps {
   onClose: () => void;
@@ -51,12 +51,14 @@ export default function MinimapOverlay({ onClose }: MinimapOverlayProps) {
   // Scene.tsx's `{mapOpen && <MinimapOverlay />}`), so a mount effect fires
   // every single time it's opened — not just the first, per spec (the
   // filename says "first_open" but the requested behavior is every time).
+  // Routed through speak() (narrator TTS), not playVoiceLine() (the
+  // character's pre-recorded MP3 bank) — text unchanged, only the playback
+  // mechanism moved to match GlowingPuzzle's shrine hint / Merchant's
+  // greeting.
   useEffect(() => {
-    playVoiceLine(
-      "minimap_first_open",
-      "Here — the lay of the garden, for whenever you're lost.",
-      { priority: true },
-    );
+    speak("Here — the lay of the garden, for whenever you're lost.", {
+      priority: true,
+    });
   }, []);
 
   useEffect(() => {

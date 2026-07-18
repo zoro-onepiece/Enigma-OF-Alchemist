@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Canvas } from "@react-three/fiber";
 import {
   Environment,
@@ -15,7 +15,6 @@ import Player, { playerKeyboardMap, teleportPlayerToSpawn } from "../3d/Player";
 import SprintLeaves from "../3d/SprintLeaves";
 import Merchant from "../3d/Merchant"; // <--- YAHAN IMPORT ADD KAREIN
 import GameHUD from "../hud/GameHUD";
-import AudioMuteToggle from "../hud/AudioMuteToggle";
 import FinaleOverlay from "../hud/FinaleOverlay";
 import MobileControls from "../hud/MobileControls";
 import MinimapOverlay from "../hud/MinimapOverlay";
@@ -34,6 +33,41 @@ import { useShowTouchControls } from "../../hooks/use-mobile";
 // Lighting.tsx's SUN_POSITION export) kept visually consistent with the sun
 // direction so the directional shadow light matches what <Sky> renders.
 const SKY_COLOR = "#87ceeb";
+
+// ─── Cloud puff texture ─────────────────────────────────────────────────
+// drei's <Clouds> defaults to loading its puff texture from an external
+// CDN (rawcdn.githack.com/pmndrs/drei-assets/.../cloud.png) — confirmed via
+// a direct request that this URL now returns HTTP 403 Forbidden. Clouds
+// were still correctly positioned/instanced, just invisible: no texture,
+// no alpha shape, nothing to see. Generated locally instead (a soft radial
+// gradient, same procedural-canvas-texture technique SprintAura.tsx uses
+// for its glow sprite) so cloud rendering has no external network
+// dependency at all — cached at module scope, built once.
+let cloudTextureDataUrl: string | null = null;
+function getCloudTextureDataUrl(): string {
+  if (cloudTextureDataUrl) return cloudTextureDataUrl;
+  const size = 256;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d")!;
+  const gradient = ctx.createRadialGradient(
+    size / 2,
+    size / 2,
+    0,
+    size / 2,
+    size / 2,
+    size / 2,
+  );
+  gradient.addColorStop(0, "rgba(255,255,255,1)");
+  gradient.addColorStop(0.4, "rgba(255,255,255,0.85)");
+  gradient.addColorStop(0.75, "rgba(255,255,255,0.35)");
+  gradient.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, size, size);
+  cloudTextureDataUrl = canvas.toDataURL("image/png");
+  return cloudTextureDataUrl;
+}
 
 // ─── WebGL capability check ───────────────────────────────────────────────────
 function isWebGLAvailable(): boolean {
@@ -126,6 +160,10 @@ export default function Scene({
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key.toLowerCase() === "m") toggleMap();
+      // ESC only ever closes the map (never opens it) — a functional update
+      // so this doesn't need `mapOpen` in the effect's deps (which would
+      // mean tearing the listener down/back up on every toggle).
+      if (e.key === "Escape") setMapOpen((open) => (open ? false : open));
     };
     // Capture phase, not bubble — PuzzleModal.tsx's root div deliberately
     // calls onKeyDown={(e) => e.stopPropagation()} on every keypress while a
@@ -203,6 +241,8 @@ export default function Scene({
     walletAddressProp !== undefined ? walletAddressProp : internalWalletAddress;
   const onConnectWallet = onConnectWalletProp ?? handleConnectWallet;
 
+  const cloudTexture = useMemo(() => getCloudTextureDataUrl(), []);
+
   if (!isWebGLAvailable()) {
     return <WebGLFallback />;
   }
@@ -242,11 +282,19 @@ export default function Scene({
             mieDirectionalG={0.7}
           />
           <Environment preset="park" background={false} />
-          {/* limit raised from 40 to 90 alongside the cloud count below —
-              drei's <Clouds> shares this instance budget across every
+          {/* limit raised to 170 alongside the cloud count below (9 -> 17)
+              — drei's <Clouds> shares this instance budget across every
               <Cloud> child, so more clouds need more headroom or the later
-              ones would visibly thin out. */}
-          <Clouds material={THREE.MeshBasicMaterial} limit={90} range={60}>
+              ones would visibly thin out. texture={cloudTexture}: see
+              getCloudTextureDataUrl() above — drei's default external CDN
+              texture 403s, which was the actual reason clouds were
+              invisible despite being correctly positioned/instanced. */}
+          <Clouds
+            material={THREE.MeshBasicMaterial}
+            texture={cloudTexture}
+            limit={170}
+            range={60}
+          >
             <Cloud
               seed={1}
               position={[-30, 55, -40]}
@@ -323,6 +371,72 @@ export default function Scene({
               opacity={0.6}
               speed={0.05}
             />
+            {/* ── Further increase, 9 -> 17 total, same style/spread
+                convention as the previous batch. ─────────────────────── */}
+            <Cloud
+              seed={88}
+              position={[-90, 50, -20]}
+              bounds={[40, 8, 40]}
+              volume={21}
+              opacity={0.55}
+              speed={0.05}
+            />
+            <Cloud
+              seed={99}
+              position={[95, 58, 15]}
+              bounds={[43, 9, 43]}
+              volume={23}
+              opacity={0.5}
+              speed={0.06}
+            />
+            <Cloud
+              seed={111}
+              position={[-20, 95, 60]}
+              bounds={[39, 8, 39]}
+              volume={19}
+              opacity={0.55}
+              speed={0.045}
+            />
+            <Cloud
+              seed={122}
+              position={[45, 35, 80]}
+              bounds={[37, 7, 37]}
+              volume={18}
+              opacity={0.6}
+              speed={0.065}
+            />
+            <Cloud
+              seed={133}
+              position={[-60, 78, -85]}
+              bounds={[46, 10, 46]}
+              volume={24}
+              opacity={0.5}
+              speed={0.05}
+            />
+            <Cloud
+              seed={144}
+              position={[15, 65, -75]}
+              bounds={[41, 9, 41]}
+              volume={20}
+              opacity={0.55}
+              speed={0.055}
+            />
+            <Cloud
+              seed={155}
+              position={[70, 88, -35]}
+              bounds={[44, 10, 44]}
+              volume={22}
+              opacity={0.5}
+              speed={0.06}
+            />
+            <Cloud
+              seed={166}
+              position={[-35, 42, 95]}
+              bounds={[36, 7, 36]}
+              volume={17}
+              opacity={0.6}
+              speed={0.05}
+            />
           </Clouds>
           {/* Explicit background + fog so the horizon blends seamlessly with
             the sky at any zoom/camera distance — no white gaps beyond the
@@ -373,11 +487,6 @@ export default function Scene({
         onToggleMap={toggleMap}
         mobileControlsActive={showTouchControls}
       />
-
-      {/* ── Standalone audio mute toggle — separate component from GameHUD
-          per the "don't touch GameHUD internals" rule, shares the same
-          global mute flag as GameHUD's own speaker button. ─────────────── */}
-      <AudioMuteToggle />
 
       {/* ── Dialogue subtitles — shows whatever line voice.ts is currently
           speaking (intro narration + in-game guidance triggers below). ──── */}

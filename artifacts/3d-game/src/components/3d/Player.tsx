@@ -445,7 +445,7 @@
 //     </Suspense>
 //   );
 // }
-import { Suspense, useRef, useEffect, useState, useMemo } from "react";
+import { Suspense, useRef, useEffect, useLayoutEffect, useState, useMemo } from "react";
 import { useGLTF, useAnimations, useKeyboardControls } from "@react-three/drei";
 import { useFrame, useThree, createPortal } from "@react-three/fiber";
 import * as THREE from "three";
@@ -669,6 +669,19 @@ function PlayerModel() {
   const [rightHand, setRightHand] = useState<THREE.Bone | null>(null);
   const [isGunEquipped, setIsGunEquipped] = useState(false);
 
+  // ─── Bulletproof T-pose gate ────────────────────────────────────────────
+  // Two prior fixes (fadeIn->setEffectiveWeight, useEffect->useLayoutEffect)
+  // targeted the exact timing of WHEN an action starts, and neither held up
+  // in the browser. This abandons timing entirely: the model stays
+  // invisible no matter what until an actual THREE.AnimationAction reports
+  // isRunning() === true (checked fresh every frame, not assumed from
+  // having called .play()) — so there is structurally no frame in which a
+  // T-pose can ever be drawn, regardless of any mount/effect/GLTF-load race
+  // that does or doesn't exist. Flips exactly once, then never checks again.
+  const [modelVisible, setModelVisible] = useState(false);
+  const tposeGateConfirmed = useRef(false);
+  const tposeGateFrame = useRef(0);
+
   const activeAction = useRef<THREE.AnimationAction | null>(null);
 
   const [subscribeKeys, getKeys] = useKeyboardControls<PlayerControl>();
@@ -700,12 +713,30 @@ function PlayerModel() {
     if (activeAction.current) {
       activeAction.current.crossFadeTo(next, duration, true);
     } else {
-      next.fadeIn(duration);
+      // Root cause of the game-start T-pose flash: fadeIn() ramps this
+      // action's weight 0 -> 1 over `duration` seconds, and with no other
+      // action yet holding weight (nothing to crossfade FROM on the very
+      // first activation), the skeleton renders at ~weight-0 — i.e. bind
+      // pose — for that entire ramp. Snapping straight to full weight here
+      // only affects this first-ever activation; every later transition
+      // still goes through the crossFadeTo branch above and fades normally.
+      next.setEffectiveWeight(1);
     }
     activeAction.current = next;
   };
 
-  useEffect(() => {
+  // useLayoutEffect, not useEffect: React defers useEffect until AFTER the
+  // browser paints, but R3F's render loop runs on its own independent rAF
+  // schedule — it can (and does) draw at least one already-committed frame
+  // in raw bind pose before a plain useEffect ever gets a chance to call
+  // crossFadeTo("idle") and activate the first action. useLayoutEffect runs
+  // synchronously right after the scene graph commit, before that first
+  // paint, so idle is already active (at full weight, via the
+  // setEffectiveWeight(1) fix in crossFadeTo above) before anything is ever
+  // drawn to screen. This is the second, distinct half of the T-pose-on-
+  // start bug — the weight fix alone only fixed the fade ramp; this closes
+  // the "effect hasn't even run yet" window.
+  useLayoutEffect(() => {
     crossFadeTo("idle", 0.3);
   }, [actions]);
 
@@ -814,6 +845,19 @@ function PlayerModel() {
     const g = group.current;
     if (!g) return;
 
+    if (!tposeGateConfirmed.current) {
+      tposeGateFrame.current += 1;
+      const anyRunning = Object.values(actions).some((a) => a?.isRunning());
+      if (tposeGateFrame.current <= 30) {
+        // eslint-disable-next-line no-console
+        console.log("🎬 T-POSE GATE:", anyRunning, "frame:", tposeGateFrame.current);
+      }
+      if (anyRunning) {
+        tposeGateConfirmed.current = true;
+        setModelVisible(true);
+      }
+    }
+
     const camLerp = 1 - Math.exp(-CAM_SMOOTH_RATE * delta);
     yaw.current += (targetYaw.current - yaw.current) * camLerp;
     pitch.current += (targetPitch.current - pitch.current) * camLerp;
@@ -912,6 +956,7 @@ function PlayerModel() {
       ref={group}
       position={PLAYER_SPAWN}
       scale={PLAYER_SCALE}
+      visible={modelVisible}
       dispose={null}
     >
       <primitive

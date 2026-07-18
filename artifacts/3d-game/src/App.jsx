@@ -25,8 +25,12 @@ import Scene from "@/components/scene/Scene";
 import MainMenu from "@/MainMenu";
 import IntroStory from "@/components/story/IntroStory";
 import { useGameStore } from "@/store/gameStore";
-import { setVoidAmbienceActive, stopMusic } from "@/audio/sounds";
-import { playVoiceLine } from "@/audio/voice";
+import { setVoidAmbienceActive, stopMusic, markUserInteracted as markAudioInteracted } from "@/audio/sounds";
+import {
+  playVoiceLine,
+  markUserInteracted as markVoiceInteracted,
+  hasUserInteracted,
+} from "@/audio/voice";
 import {
   loginWithEmail,
   loginWithGoogle,
@@ -74,7 +78,22 @@ export default function App() {
     })();
   }, []);
 
+  // Confirms the audio/voice gesture gates synchronously, from inside the
+  // actual trusted click handler that starts a login — not via the gates'
+  // own pointerdown/keydown listeners, which only start existing once
+  // something first calls into voice.ts/sounds.ts (i.e. AFTER this click
+  // has already fully dispatched, so they can never observe it). Without
+  // this, the first-ever queued line(s) of a session (greeting_welcome,
+  // IntroStory's first paragraph) get silently cancelled by the next
+  // click's cancelSpeech() before anything is ever heard — see
+  // markUserInteracted()'s doc comment in voice.ts for the full race.
+  const confirmUserGesture = () => {
+    markAudioInteracted();
+    markVoiceInteracted();
+  };
+
   const handleLoginWithEmail = async (email) => {
+    confirmUserGesture();
     setAuthError(null);
     setAuthLoading(true);
     try {
@@ -96,6 +115,7 @@ export default function App() {
   };
 
   const handleLoginWithGoogle = async () => {
+    confirmUserGesture();
     setAuthError(null);
     setAuthLoading(true);
     try {
@@ -109,6 +129,8 @@ export default function App() {
 
   // ── DEV BYPASS: skip auth entirely (dev builds only) ─────────
   const handleDevBypass = () => {
+    console.log("🔊 Dev Bypass clicked at", Date.now());
+    confirmUserGesture();
     console.warn("[dev] Auth bypassed — using fake wallet:", DEV_WALLET);
     setIsDevSession(true);
     setWalletAddress(DEV_WALLET);
@@ -135,6 +157,12 @@ export default function App() {
   useEffect(() => {
     if (!isLoggedIn || hasGreetedRef.current) return;
     hasGreetedRef.current = true;
+    console.log(
+      "🔊 greeting playback attempted at",
+      Date.now(),
+      "hasInteracted:",
+      hasUserInteracted(),
+    );
     playVoiceLine(
       "greeting_welcome",
       "Where... where am I? I think... I think I'm lost. What awaits me here?",

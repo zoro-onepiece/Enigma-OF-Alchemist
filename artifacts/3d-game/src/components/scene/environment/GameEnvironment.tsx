@@ -15,6 +15,7 @@ import GlbButterflies from "./GlbButterfly";
 import FootstepAudio from "./FootstepAudio";
 import AmbientMotes from "../effects/AmbientMotes";
 import GrassField from "./GrassField";
+import GroundLeaves from "./GroundLeaves";
 import { useGameStore } from "../../../store/gameStore";
 import { ISLAND_SCALE, GROUND_SIZE, BOUNDARY_RADIUS } from "../../../lib/worldCollision";
 import { playSfx } from "../../../audio/sounds";
@@ -465,6 +466,61 @@ export default function GameEnvironment() {
     return flowers;
   }, []);
 
+  // Scattered ground-leaf litter — a separate decorative layer from both
+  // grass and flowers above (and unrelated to SprintLeaves.tsx, the
+  // character's own sprint fx). Same jittered-grid + exclusion-zone
+  // approach as grass/flowers, targeting ~100,000 instances total; see
+  // GroundLeaves.tsx for the GPU-instancing + proximity-reaction approach.
+  const groundLeaves = useMemo(() => {
+    const rand = mulberry32(9911);
+    const leaves: {
+      position: [number, number, number];
+      rotationY: number;
+      tiltX: number;
+      tiltZ: number;
+      scale: number;
+      shapeIndex: number;
+    }[] = [];
+
+    const half = (GROUND_SIZE - 2) / 2;
+    const zOffset = -5 * ISLAND_SCALE;
+    const GRID_CELL_SIZE = 1.1;
+    const GRID_JITTER = 0.9;
+    const LEAVES_PER_CELL = 2;
+
+    const minX = -half;
+    const maxX = half;
+    const minZ = zOffset - half;
+    const maxZ = zOffset + half;
+    const cols = Math.ceil((maxX - minX) / GRID_CELL_SIZE);
+    const rows = Math.ceil((maxZ - minZ) / GRID_CELL_SIZE);
+
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        const cellCenterX = minX + (col + 0.5) * GRID_CELL_SIZE;
+        const cellCenterZ = minZ + (row + 0.5) * GRID_CELL_SIZE;
+
+        for (let l = 0; l < LEAVES_PER_CELL; l++) {
+          const x = cellCenterX + (rand() - 0.5) * GRID_CELL_SIZE * GRID_JITTER;
+          const z = cellCenterZ + (rand() - 0.5) * GRID_CELL_SIZE * GRID_JITTER;
+
+          if (!isClearForGroundCover(x, z)) continue;
+
+          leaves.push({
+            position: [x, 0, z],
+            rotationY: rand() * Math.PI * 2,
+            tiltX: (rand() - 0.5) * 0.3,
+            tiltZ: (rand() - 0.5) * 0.3,
+            scale: 0.7 + rand() * 0.6,
+            shapeIndex: leaves.length % 2,
+          });
+        }
+      }
+    }
+
+    return leaves;
+  }, []);
+
   // A handful of anchor points near flower patches for butterflies to
   // flutter around (Task 4) — derived independently with the same seeded
   // approach rather than reusing grassField's internal per-blade loop
@@ -559,6 +615,10 @@ export default function GameEnvironment() {
       {/* Anemone flower beds — a separate decorative layer on top of the
           grass, not a replacement for it. See FlowerField.tsx. */}
       <FlowerField placements={flowerField} />
+
+      {/* Scattered ground-leaf litter — separate system from SprintLeaves
+          (character sprint fx, untouched). See GroundLeaves.tsx. */}
+      <GroundLeaves placements={groundLeaves} />
 
       {/* Autumn tree grove — artist-made GLB species (replaces the old
           fully-procedural CherryBlossomTree / QuantumTree / GreenLeafTree) */}

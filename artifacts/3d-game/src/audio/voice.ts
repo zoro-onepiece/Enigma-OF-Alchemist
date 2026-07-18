@@ -5,9 +5,10 @@
  * they never talk over each other regardless of which kind either side is:
  *   - Pre-recorded lines (playVoiceLine) — 22 MP3s under public/audio/,
  *     covering every named character-dialogue trigger in the game.
- *   - Live speech synthesis (speak) — kept only for IntroStory's 4 opening
- *     paragraphs, which have no pre-recorded audio and never will (they're
- *     player-paced prose, not short reactive lines).
+ *   - Live speech synthesis (speak) — the story-narrator voice: IntroStory's
+ *     4 opening paragraphs (player-paced prose with no pre-recorded audio)
+ *     plus any other line that reads as the world/narrator speaking rather
+ *     than the player character (e.g. GlowingPuzzle's shrine-approach hint).
  *
  * Design goals mirror sounds.ts:
  *   - Never throw / never spam the console — a missing/undecodable file (or
@@ -19,7 +20,7 @@
  *     does — browsers block both speechSynthesis and Audio.play() before one.
  */
 import { useSoundStore } from "../store/soundStore";
-import { audioFileExists } from "./sounds";
+import { audioFileExists, duckMusicVolume, restoreMusicVolume } from "./sounds";
 
 // ─── Voice tuning (speechSynthesis fallback only — see file header) ────────
 const VOICE_PITCH = 1.25;
@@ -102,19 +103,25 @@ let hasInteracted = false;
 let interactionGateArmed = false;
 let pendingAfterInteraction: Array<() => void> = [];
 
+function flushInteractionGate(): void {
+  if (hasInteracted) return;
+  hasInteracted = true;
+  window.removeEventListener("pointerdown", gestureListener);
+  window.removeEventListener("keydown", gestureListener);
+  const queued = pendingAfterInteraction;
+  pendingAfterInteraction = [];
+  queued.forEach((cb) => cb());
+}
+
+function gestureListener(): void {
+  flushInteractionGate();
+}
+
 function armInteractionGate(): void {
   if (interactionGateArmed) return;
   interactionGateArmed = true;
-  const handler = () => {
-    hasInteracted = true;
-    window.removeEventListener("pointerdown", handler);
-    window.removeEventListener("keydown", handler);
-    const queued = pendingAfterInteraction;
-    pendingAfterInteraction = [];
-    queued.forEach((cb) => cb());
-  };
-  window.addEventListener("pointerdown", handler);
-  window.addEventListener("keydown", handler);
+  window.addEventListener("pointerdown", gestureListener);
+  window.addEventListener("keydown", gestureListener);
 }
 
 function runAfterInteraction(cb: () => void): void {
@@ -124,6 +131,37 @@ function runAfterInteraction(cb: () => void): void {
   }
   pendingAfterInteraction.push(cb);
   armInteractionGate();
+}
+
+/** Root-cause fix for "the first queued line of a session never plays":
+ * armInteractionGate()'s pointerdown/keydown listener only starts existing
+ * the first time speak()/playVoiceLine() is ever called — which happens
+ * from IntroStory's mount effect / App.jsx's greeting effect, i.e. AFTER
+ * login's click has already fully dispatched. That click is never observed
+ * (nothing was listening for it yet), so the first line(s) get deferred to
+ * pendingAfterInteraction. The next gesture that finally arrives is usually
+ * the user clicking "Continue" on IntroStory's silent-but-visible first
+ * paragraph — but that SAME click also drives IntroStory's advance(),
+ * whose effect cleanup calls cancelSpeech() in the same tick, wiping the
+ * very line(s) that click had just unblocked before anything audible ever
+ * played. Every later call works fine because hasInteracted is already
+ * true by then, so no deferral/race exists.
+ *
+ * Call this directly and synchronously inside a real, trusted click/keydown
+ * handler (e.g. a login button's onClick, before any async work) instead —
+ * confirming the gesture at its actual source closes the gate immediately,
+ * so by the time greeting_welcome/paragraph 0 ever try to play, there's
+ * nothing to defer and no cancelSpeech() race left to lose. */
+export function markUserInteracted(): void {
+  // eslint-disable-next-line no-console
+  console.log("🔊 markUserInteracted CALLED at", Date.now());
+  flushInteractionGate();
+}
+
+/** Diagnostic-only: exposes the gate's live state so call sites can log it
+ * (e.g. App.jsx's greeting effect) without reaching into module internals. */
+export function hasUserInteracted(): boolean {
+  return hasInteracted;
 }
 
 // ─── Currently-speaking subscribable value (read by SubtitleBar) ──────────
@@ -192,15 +230,18 @@ function playNext(): void {
   if (useSoundStore.getState().muted) {
     queue = [];
     setCurrentText(null);
+    restoreMusicVolume();
     return;
   }
   const next = queue.shift();
   if (!next) {
     setCurrentText(null);
+    restoreMusicVolume();
     return;
   }
   speaking = true;
   setCurrentText(next.text);
+  duckMusicVolume();
 
   const advance = () => {
     speaking = false;
@@ -223,7 +264,19 @@ function playNext(): void {
       currentAudioEl = el;
       el.onended = advance;
       el.onerror = advance;
-      el.play().catch(advance);
+      const playPromise = el.play();
+      if (path.includes("greeting_welcome")) {
+        playPromise
+          .then(() => {
+            // eslint-disable-next-line no-console
+            console.log("🔊 greeting play() result:", "resolved");
+          })
+          .catch((err) => {
+            // eslint-disable-next-line no-console
+            console.log("🔊 greeting play() result:", err);
+          });
+      }
+      playPromise.catch(advance);
     });
     return;
   }
@@ -241,9 +294,10 @@ function playNext(): void {
   window.speechSynthesis.speak(utterance);
 }
 
-/** Speak a line via live speechSynthesis — used only by IntroStory's
- * opening paragraphs now (see file header); every reactive in-game
- * dialogue trigger uses playVoiceLine() instead. Normal lines queue after
+/** Speak a line via live speechSynthesis — the story-narrator voice (see
+ * file header): IntroStory's opening paragraphs and any other narrator-
+ * voiced line (e.g. GlowingPuzzle's shrine hint). Character-voiced reactive
+ * dialogue still uses playVoiceLine() instead. Normal lines queue after
  * whatever's already playing; `priority: true` moves the line to the front
  * (without interrupting speech already in progress). No-ops if
  * speechSynthesis is unsupported, muted, or before the first user gesture
@@ -291,6 +345,7 @@ export function playVoiceLine(
 export function cancelSpeech(): void {
   queue = [];
   speaking = false;
+  restoreMusicVolume();
   if (currentAudioEl) {
     currentAudioEl.pause();
     currentAudioEl = null;

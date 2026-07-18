@@ -10,7 +10,10 @@
       "Bash(node *)",
       "Bash(pnpm build *)",
       "Bash(xargs -0 grep -l \"player_red\\\\.glb\\\\|player_orange\\\\.glb\\\\|player_purple\\\\.glb\")",
-      "Bash(pnpm run *)"
+      "Bash(pnpm run *)",
+      "Bash(grep *)",
+      "Bash(cat)",
+      "Bash(rm count_leaves.mjs)"
     ]
   }
 }

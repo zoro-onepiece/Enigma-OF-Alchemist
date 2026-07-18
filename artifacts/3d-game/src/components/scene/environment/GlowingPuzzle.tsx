@@ -4,7 +4,7 @@ import { Html, PositionalAudio } from "@react-three/drei";
 import * as THREE from "three";
 import { PLAYER_WORLD_POS } from "../../3d/Player";
 import { audioFileExists } from "../../../audio/sounds";
-import { playVoiceLine, canTrigger } from "../../../audio/voice";
+import { speak, canTrigger } from "../../../audio/voice";
 import { useSoundStore } from "../../../store/soundStore";
 import { useGameStore } from "../../../store/gameStore";
 import { registerBlocker } from "../../../lib/worldCollision";
@@ -115,17 +115,18 @@ let globalKeyListenerAttached = false;
 // shared cooldown key (not per-puzzle) keeps a quick run past several
 // pedestals from queueing up a pile of hint lines back to back.
 //
-// Previously rotated randomly across 3 variant strings (spoken live via
-// speechSynthesis); now backed by a single pre-recorded MP3
-// (puzzle_hint_generic.mp3), so there's one fixed subtitle text to match —
-// kept as the first of the old 3 variants.
+// Uses speak() (live speechSynthesis) — the same story-narrator voice
+// IntroStory.tsx's paragraphs use — not playVoiceLine()'s pre-recorded
+// character MP3s. This line reads as the world/shrine narrator describing
+// the shrine, not the player character speaking, so it belongs on the
+// narrator voice, not the character voice bank.
 const APPROACH_HINT_TEXT =
   "This shrine holds one of the four seals. Solve its trial to claim a fragment of the old power.";
 const APPROACH_HINT_COOLDOWN_MS = 20000;
 
 function speakApproachHint(): void {
   if (!canTrigger("puzzle-approach-hint", APPROACH_HINT_COOLDOWN_MS)) return;
-  playVoiceLine("puzzle_hint_generic", APPROACH_HINT_TEXT, { priority: true });
+  speak(APPROACH_HINT_TEXT, { priority: true });
 }
 
 function ensureGlobalKeyListener() {

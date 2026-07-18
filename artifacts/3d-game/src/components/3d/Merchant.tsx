@@ -1,10 +1,10 @@
-import { Suspense, useRef, useEffect, useMemo } from "react";
-import { useGLTF, useAnimations } from "@react-three/drei";
+import { Suspense, useRef, useEffect, useMemo, useState } from "react";
+import { useGLTF, useAnimations, Html } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { PLAYER_WORLD_POS } from "./Player";
 import { useGameStore } from "../../store/gameStore";
-import { playVoiceLine } from "../../audio/voice";
+import { speak } from "../../audio/voice";
 import { registerBlocker } from "../../lib/worldCollision";
 
 // Exported so MinimapOverlay.tsx can plot the merchant's marker using the
@@ -18,7 +18,14 @@ export const MERCHANT_POSITION: [number, number, number] = [15, 0, 20];
 // trigger off.
 const PROXIMITY_RANGE = 4;
 const merchantPos = new THREE.Vector3(...MERCHANT_POSITION);
-const MERCHANT_SCALE = 15;
+// Raised 15 -> 19.5 (+30%) per explicit size-increase request. footprintRadius
+// below already multiplies by MERCHANT_SCALE, so this single constant change
+// also proportionally grows the collider — verified by re-running the same
+// foot-bone measurement technique against the raw GLB: maxDist (raw local
+// units) = 0.015911 from bone L_foot_JNT_045, giving footprintRadius
+// 0.6387 -> 0.7103 (both include the fixed +0.4 COLLIDER_MARGIN, which is a
+// flat body-width buffer and intentionally does not scale with the model).
+const MERCHANT_SCALE = 19.5;
 // Small margin added on top of the measured foot-bone spread so the
 // collider covers the model's actual body width, not just the exact foot
 // points.
@@ -39,6 +46,11 @@ export default function Merchant() {
   const group = useRef<THREE.Group>(null);
   const { scene, animations } = useGLTF("/merchant.glb");
   const { actions } = useAnimations(animations, group);
+  // "Press E to interact" proximity label — same Html-overlay pattern
+  // GlowingPuzzle.tsx's pedestals use. Confirmed via a repo-wide grep that
+  // no such overlay existed anywhere on the merchant before this (only the
+  // one-time merchant_first_meet greeting voice line did).
+  const [inRange, setInRange] = useState(false);
 
   const spawnPosition: [number, number, number] = DEBUG_SPAWN_NEAR_PLAYER
     ? [3, 0, 0] // right in front of / above player spawn — impossible to miss
@@ -90,13 +102,39 @@ export default function Merchant() {
   // via getState() inside the frame loop rather than subscribing, so this
   // doesn't re-render every frame and always sees the latest flag — same
   // pattern GlowingPuzzle.tsx's key listener uses for gameStore.phase.
-  useFrame(() => {
-    if (useGameStore.getState().hasMetMerchant) return;
+  // 🔍 TEMP DEBUG (item 1 re-investigation) — logs the live computed
+  // distance once/second regardless of range, plus every inRange
+  // true/false transition immediately. Remove once the real cause of the
+  // missing "Press E" label is confirmed from actual console output.
+  const lastLogRef = useRef(0);
+
+  useFrame((state) => {
     const distance = PLAYER_WORLD_POS.distanceTo(merchantPos);
-    if (distance <= PROXIMITY_RANGE) {
+    const nowInRange = distance <= PROXIMITY_RANGE;
+
+    if (state.clock.elapsedTime - lastLogRef.current >= 1) {
+      lastLogRef.current = state.clock.elapsedTime;
+      // eslint-disable-next-line no-console
+      console.log(
+        `[Merchant DEBUG] player=(${PLAYER_WORLD_POS.x.toFixed(2)}, ${PLAYER_WORLD_POS.z.toFixed(2)}) ` +
+          `merchant=(${merchantPos.x.toFixed(2)}, ${merchantPos.z.toFixed(2)}) distance=${distance.toFixed(2)} ` +
+          `PROXIMITY_RANGE=${PROXIMITY_RANGE} nowInRange=${nowInRange} inRangeState=${inRange}`,
+      );
+    }
+
+    if (nowInRange !== inRange) {
+      // eslint-disable-next-line no-console
+      console.log(`[Merchant DEBUG] inRange transition: ${inRange} -> ${nowInRange}`);
+      setInRange(nowInRange);
+    }
+
+    if (useGameStore.getState().hasMetMerchant) return;
+    if (nowInRange) {
       useGameStore.getState().setHasMetMerchant();
-      playVoiceLine(
-        "merchant_first_meet",
+      // Routed through speak() (narrator TTS), not playVoiceLine() (the
+      // character's pre-recorded MP3 bank) — text unchanged, only the
+      // playback mechanism moved to match GlowingPuzzle's shrine hint.
+      speak(
         "Ah, a new face! Come, browse my wares — alchemical trinkets, all genuine... mostly.",
         { priority: true },
       );
@@ -177,6 +215,20 @@ export default function Merchant() {
       >
         <primitive object={scene} />
       </group>
+
+      {/* "Press E to interact" label — placed in a separate, unscaled
+          sibling group (not nested inside the scaled model group above,
+          which would multiply this position by MERCHANT_SCALE too) at a
+          world-space height measured directly from the GLB: the model's
+          head sits at ~1.36 world units tall after scaling, so 1.85 clears
+          it comfortably. */}
+      {inRange && (
+        <Html center distanceFactor={8} position={[spawnPosition[0], 1.85, spawnPosition[2]]}>
+          <div className="bg-black/70 text-white text-xs lg:text-base xl:text-lg px-2 py-1 lg:px-4 lg:py-2 rounded lg:rounded-lg pointer-events-none whitespace-nowrap">
+            Press E to interact
+          </div>
+        </Html>
+      )}
     </Suspense>
   );
 }
