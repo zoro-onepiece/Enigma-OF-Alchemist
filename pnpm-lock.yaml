@@ -152,9 +152,15 @@ importers:
 
   .:
     devDependencies:
+      '@esbuild/win32-x64':
+        specifier: ^0.27.3
+        version: 0.27.3
       concurrently:
         specifier: ^10.0.3
         version: 10.0.3
+      lightningcss-win32-x64-msvc:
+        specifier: 1.32.0
+        version: 1.32.0
       prettier:
         specifier: ^3.8.4
         version: 3.8.4
