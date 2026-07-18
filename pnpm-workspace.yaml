@@ -37,6 +37,7 @@ minimumReleaseAgeExclude:
 packages:
   - artifacts/api-server
   - artifacts/3d-game
+  - artifacts/contracts
   - lib/*
   - lib/integrations/*
   - scripts
@@ -162,3 +163,5 @@ overrides:
 
 allowBuilds:
   '@openfort/openfort-node': false
+  keccak: true
+  secp256k1: true
