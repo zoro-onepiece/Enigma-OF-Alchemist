@@ -1,11 +1,15 @@
-import { Suspense, useRef, useEffect, useMemo } from "react";
-import { useGLTF, useAnimations } from "@react-three/drei";
+import { Suspense, useRef, useEffect, useMemo, useState } from "react";
+import { useGLTF, useAnimations, Html } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { PLAYER_WORLD_POS } from "./Player";
 import { useGameStore } from "../../store/gameStore";
 import { playVoiceLine } from "../../audio/voice";
 import { registerBlocker } from "../../lib/worldCollision";
+
+// How close (world units, XZ-plane) the player must be to see the "Press E
+// to Trade" prompt and have E open the shop.
+const INTERACT_RADIUS = 4;
 
 // Exported so MinimapOverlay.tsx can plot the merchant's marker using the
 // exact same coordinate the 3D scene actually places him at — same pattern
@@ -40,23 +44,16 @@ export default function Merchant() {
   const { scene, animations } = useGLTF("/merchant.glb");
   const { actions } = useAnimations(animations, group);
 
+  const [nearby, setNearby] = useState(false);
+  const openInventory = useGameStore((s) => s.openInventory);
+  const phase = useGameStore((s) => s.phase);
+
+  // Yeh line duplicate thi, ab siraf ek dafa hai
   const spawnPosition: [number, number, number] = DEBUG_SPAWN_NEAR_PLAYER
     ? [3, 0, 0] // right in front of / above player spawn — impossible to miss
     : MERCHANT_POSITION;
 
-  // Collider radius, measured from the rig's own foot bones (L_foot_JNT /
-  // R_foot_JNT — confirmed via direct GLB skin/joint inspection) rather
-  // than Box3().setFromObject(scene), which — per this codebase's own
-  // documented pitfall — only reflects bind pose and ignores bone
-  // deformation; worse, a T/A-pose bind pose here would badly overstate
-  // the footprint since arms are typically spread wide in bind pose. Feet
-  // are far less affected by that than arms/hands, so their world-space
-  // spread (after updateMatrixWorld) is a reliable stand-in for the
-  // model's actual standing footprint. Merchant.tsx had NO collider
-  // registered at all before this (confirmed via a repo-wide grep for
-  // registerBlocker() — only the tree components and JapaneseTemple
-  // called it) — that's the root cause of walking straight through him,
-  // not a mismatched position/radius.
+  // --- Robin's Logic: Collider and Voice Lines ---
   const footprintRadius = useMemo(() => {
     scene.updateMatrixWorld(true);
     let maxDist = 0;
@@ -67,13 +64,9 @@ export default function Merchant() {
         maxDist = Math.max(maxDist, Math.hypot(p.x, p.z));
       }
     });
-    // Fallback if the rig's naming ever changes and no "foot" bone matches.
     return (maxDist || 0.15) * MERCHANT_SCALE + COLLIDER_MARGIN;
   }, [scene]);
 
-  // Uses spawnPosition (not the hardcoded MERCHANT_POSITION) so the
-  // collider always matches wherever the model is actually rendered,
-  // including under DEBUG_SPAWN_NEAR_PLAYER.
   useEffect(() => {
     return registerBlocker({
       minX: spawnPosition[0] - footprintRadius,
@@ -82,14 +75,8 @@ export default function Merchant() {
       maxZ: spawnPosition[2] + footprintRadius,
       isSolid: () => true,
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [footprintRadius, spawnPosition[0], spawnPosition[2]]);
 
-  // merchant_first_meet — fires once ever (gameStore.hasMetMerchant),
-  // the first time the player comes within range. Reads/writes the store
-  // via getState() inside the frame loop rather than subscribing, so this
-  // doesn't re-render every frame and always sees the latest flag — same
-  // pattern GlowingPuzzle.tsx's key listener uses for gameStore.phase.
   useFrame(() => {
     if (useGameStore.getState().hasMetMerchant) return;
     const distance = PLAYER_WORLD_POS.distanceTo(merchantPos);
@@ -103,6 +90,24 @@ export default function Merchant() {
     }
   });
 
+  // --- Asra's Logic: E to Interact and Open Shop ---
+  useFrame(() => {
+    const dx = spawnPosition[0] - PLAYER_WORLD_POS.x;
+    const dz = spawnPosition[2] - PLAYER_WORLD_POS.z;
+    const isNear = dx * dx + dz * dz <= INTERACT_RADIUS * INTERACT_RADIUS;
+    if (isNear !== nearby) setNearby(isNear);
+  });
+
+  useEffect(() => {
+    if (!nearby) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() === "e" && phase !== "dead") openInventory();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [nearby, phase, openInventory]);
+
+  // --- Shared Setup ---
   useEffect(() => {
     const actionName = Object.keys(actions)[0];
     if (actionName && actions[actionName]) {
@@ -117,53 +122,13 @@ export default function Merchant() {
 
         if (DEBUG_PINK_MATERIAL) {
           mesh.material = new THREE.MeshStandardMaterial({
-            color: 0xff00ff, // bright pink — impossible to miss
+            color: 0xff00ff,
             emissive: 0xff00ff,
             emissiveIntensity: 0.5,
           });
         }
       }
     });
-
-    // 🔍 DEBUG LOGGING — merchant kahan spawn hua aur uski actual size kya hai
-    // setTimeout(() => {
-    //   if (group.current) {
-    //     const box = new THREE.Box3().setFromObject(group.current);
-    //     const size = new THREE.Vector3();
-    //     box.getSize(size);
-    //     const center = new THREE.Vector3();
-    //     box.getCenter(center);
-
-    //     console.log("🧑‍💼 ====== MERCHANT DEBUG ====== 🧑‍💼");
-    //     console.log("group.current exists:", !!group.current);
-    //     console.log("scene children count:", scene.children.length);
-    //     console.log("World Position (group):", group.current.position);
-    //     console.log(
-    //       "World Center (bounding box):",
-    //       `X: ${center.x.toFixed(2)}, Y: ${center.y.toFixed(2)}, Z: ${center.z.toFixed(2)}`,
-    //     );
-    //     console.log(
-    //       "Actual World Size:",
-    //       `W: ${size.x.toFixed(3)}, H: ${size.y.toFixed(3)}, D: ${size.z.toFixed(3)}`,
-    //     );
-    //     console.log(
-    //       "Is size zero/tiny? (mesh missing or scale wrong):",
-    //       size.x < 0.01 && size.y < 0.01 && size.z < 0.01,
-    //     );
-    //     console.log("Visible flag:", group.current.visible);
-    //     console.log("Mesh names found:");
-    //     scene.traverse((child) => {
-    //       if ((child as THREE.Mesh).isMesh) {
-    //         console.log("  -", child.name, "| visible:", child.visible);
-    //       }
-    //     });
-    //     console.log("================================");
-    //   } else {
-    //     console.error(
-    //       "❌ Merchant group.current is NULL — component may not be mounted!",
-    //     );
-    //   }
-    // }, 1500);
   }, [actions, scene]);
 
   return (
@@ -177,6 +142,15 @@ export default function Merchant() {
       >
         <primitive object={scene} />
       </group>
+      {nearby && (
+        <group position={[spawnPosition[0], spawnPosition[1] + 3, spawnPosition[2]]}>
+          <Html center distanceFactor={10} pointerEvents="none">
+            <div className="whitespace-nowrap rounded border border-amber-500/60 bg-black/70 px-3 py-1.5 text-xs text-white">
+              Press E to Trade
+            </div>
+          </Html>
+        </group>
+      )}
     </Suspense>
   );
 }
