@@ -1,4 +1,4 @@
-kind = "slides"
+find . -name "*.replit-artifact*" -not -path "*/node_modules/*" -maxdepth 3kind = "slides"
 previewPath = "/hackathon-deck/"
 title = "Enigma of Alchemist — Hackathon Deck"
 version = "1.0.0"
