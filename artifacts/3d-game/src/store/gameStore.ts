@@ -66,6 +66,12 @@ interface GameStore {
   // reappear once per login session, not survive across page refreshes.
   hasSeenIntro: boolean;
 
+  // Voice-line one-shot flags (Part A: pre-recorded dialogue integration).
+  // Same "in-memory, once per session, survives a Try Again retry" contract
+  // as hasSeenIntro above — a retry shouldn't replay "first meeting"/"first
+  // sprint" lines any more than it should replay the intro.
+  hasMetMerchant: boolean;
+  hasSprinted: boolean;
   // Merchant skins (Openfort x402 purchases): which skins the connected
   // wallet owns and which one is currently equipped. Not part of
   // createInitialRunState — a death/restart shouldn't un-buy a skin, same
@@ -87,6 +93,8 @@ interface GameStore {
   closeInventory: () => void;
   claimFinale: () => void;
   setHasSeenIntro: () => void;
+  setHasMetMerchant: () => void;
+  setHasSprinted: () => void;
   // Marks a skin as owned after a successful x402 checkout (see
   // ShopInventoryModal.tsx's Shop tab).
   purchaseSkin: (skinId: SkinId) => void;
@@ -125,6 +133,8 @@ export const useGameStore = create<GameStore>((set) => ({
   ...createInitialRunState(),
   phase: "menu",
   hasSeenIntro: false,
+  hasMetMerchant: false,
+  hasSprinted: false,
   ownedSkins: new Set<SkinId>(),
   equippedSkin: null,
 
@@ -179,6 +189,8 @@ export const useGameStore = create<GameStore>((set) => ({
   claimFinale: () => set({ finaleClaimed: true }),
 
   setHasSeenIntro: () => set({ hasSeenIntro: true }),
+  setHasMetMerchant: () => set({ hasMetMerchant: true }),
+  setHasSprinted: () => set({ hasSprinted: true }),
 
   purchaseSkin: (skinId) =>
     set((s) => ({ ownedSkins: new Set(s.ownedSkins).add(skinId) })),
@@ -191,5 +203,7 @@ export const useGameStore = create<GameStore>((set) => ({
       ...createInitialRunState(),
       phase: "exploring",
       hasSeenIntro: s.hasSeenIntro,
+      hasMetMerchant: s.hasMetMerchant,
+      hasSprinted: s.hasSprinted,
     })),
 }));

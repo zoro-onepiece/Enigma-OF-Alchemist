@@ -29,6 +29,7 @@ import {
 } from "../scene/environment/GlowingPuzzle";
 import { BOUNDARY_RADIUS } from "../../lib/worldCollision";
 import { useGameStore } from "../../store/gameStore";
+import { playVoiceLine } from "../../audio/voice";
 
 export interface MinimapOverlayProps {
   onClose: () => void;
@@ -45,6 +46,18 @@ function toMap(worldX: number, worldZ: number) {
 export default function MinimapOverlay({ onClose }: MinimapOverlayProps) {
   const solved = useGameStore((s) => s.puzzle.solved);
   const [player, setPlayer] = useState({ x: 0, z: 0, rotY: 0 });
+
+  // This component only mounts while the map is actually open (see
+  // Scene.tsx's `{mapOpen && <MinimapOverlay />}`), so a mount effect fires
+  // every single time it's opened — not just the first, per spec (the
+  // filename says "first_open" but the requested behavior is every time).
+  useEffect(() => {
+    playVoiceLine(
+      "minimap_first_open",
+      "Here — the lay of the garden, for whenever you're lost.",
+      { priority: true },
+    );
+  }, []);
 
   useEffect(() => {
     let raf: number;

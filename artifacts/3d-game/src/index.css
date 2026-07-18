@@ -4,6 +4,13 @@
 @source "./**/*.{ts,tsx,js,jsx}";
 @source "../index.html";
 
+/* --- LOCAL FIX: full-height layout taake 3D canvas poori screen le --- */
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {

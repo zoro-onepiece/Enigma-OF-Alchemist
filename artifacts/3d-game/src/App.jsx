@@ -20,12 +20,13 @@
 // Scene's own internal GameHUD displays them. Scene/GameHUD were not
 // otherwise modified.
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Scene from "@/components/scene/Scene";
 import MainMenu from "@/MainMenu";
 import IntroStory from "@/components/story/IntroStory";
 import { useGameStore } from "@/store/gameStore";
 import { setVoidAmbienceActive, stopMusic } from "@/audio/sounds";
+import { playVoiceLine } from "@/audio/voice";
 import {
   loginWithEmail,
   loginWithGoogle,
@@ -123,6 +124,23 @@ export default function App() {
   const isLoggedIn = Boolean(walletAddress);
   const hasSeenIntro = useGameStore((s) => s.hasSeenIntro);
   const setHasSeenIntro = useGameStore((s) => s.setHasSeenIntro);
+
+  // greeting_welcome: once, right after login succeeds, before IntroStory's
+  // own first paragraph. `priority: true` guarantees it lands at the front
+  // of voice.ts's shared queue regardless of React's parent/child effect
+  // ordering (IntroStory's own effect — a child of this component — runs
+  // before this one in the same commit, so without priority its paragraph
+  // could enqueue first).
+  const hasGreetedRef = useRef(false);
+  useEffect(() => {
+    if (!isLoggedIn || hasGreetedRef.current) return;
+    hasGreetedRef.current = true;
+    playVoiceLine(
+      "greeting_welcome",
+      "Where... where am I? I think... I think I'm lost. What awaits me here?",
+      { priority: true },
+    );
+  }, [isLoggedIn]);
 
   // Pre-gameplay ambience (void.mp3) plays across MainMenu + IntroStory and
   // stops the instant Scene mounts, where gameplay music (music.mp3) takes
