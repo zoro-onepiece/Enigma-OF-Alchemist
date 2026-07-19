@@ -20,7 +20,7 @@ import AlchemyMatch3Game from "./AlchemyMatch3Game";
 import ElementalSudoku from "./games/ElementalSudoku";
 import SigilPairsGame from "./SigilPairsGame";
 import { useGameStore } from "../../store/gameStore";
-import { speak, canTrigger } from "../../audio/voice";
+import { playVoiceLine, canTrigger, type VoiceLineName } from "../../audio/voice";
 
 // HP cost per lost mini-game attempt (10 losses = death at 100 max HP).
 // Single source of truth for all 4 games — each calls its own onLose() at
@@ -56,6 +56,15 @@ const ORDINAL_VOICE_LINES = [
   "Two seals broken. The garden is starting to remember you.",
   "Almost there. One shrine left standing between you and the truth.",
   "That's the last one! Something is about to change...",
+];
+// Pre-recorded per solve-ordinal, same indexing (solvedCountBefore) as
+// ORDINAL_VOICE_LINES above — was live speechSynthesis, now a fixed MP3
+// per ordinal with the same text shown in the subtitle.
+const ORDINAL_VOICE_LINE_NAMES: VoiceLineName[] = [
+  "puzzle_solved_1st",
+  "puzzle_solved_2nd",
+  "puzzle_solved_3rd",
+  "puzzle_solved_4th",
 ];
 const ORDINAL_VOICE_COOLDOWN_MS = 20000;
 
@@ -113,12 +122,10 @@ export default function PuzzleModal({
   // gated by the shared trigger cooldown so a re-render never double-fires it.
   useEffect(() => {
     if (!victorious) return;
-    const line =
-      ORDINAL_VOICE_LINES[
-        Math.min(solvedCountBefore, ORDINAL_VOICE_LINES.length - 1)
-      ];
+    const ordinalIndex = Math.min(solvedCountBefore, ORDINAL_VOICE_LINES.length - 1);
+    const line = ORDINAL_VOICE_LINES[ordinalIndex];
     if (canTrigger(`puzzle-solved-${solvedCountBefore}`, ORDINAL_VOICE_COOLDOWN_MS)) {
-      speak(line, { priority: true });
+      playVoiceLine(ORDINAL_VOICE_LINE_NAMES[ordinalIndex], line, { priority: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [victorious]);
@@ -138,8 +145,20 @@ export default function PuzzleModal({
   // this was the fatal blow (see gameStore.ts). The mini-game itself keeps
   // its own local retry UI (e.g. Alchemy Match-3's internal "Restart"
   // button) — this is purely the world-state consequence layered on top.
+  //
+  // This is the only damagePlayer() call site in the game right now, so a
+  // generic "damage reaction" line and "mini-game failed" line would always
+  // fire together here — per spec, minigame_fail takes priority and the
+  // damage_reaction_1/2 lines (see voice.ts) are reserved for a future
+  // non-mini-game damage source instead of also playing (and queuing
+  // behind) a second line every single failed attempt.
   const handleLose = () => {
     damagePlayer(PUZZLE_FAIL_DAMAGE);
+    playVoiceLine(
+      "minigame_fail",
+      "The mixture failed... but failure teaches as much as success.",
+      { priority: true },
+    );
   };
 
   return (

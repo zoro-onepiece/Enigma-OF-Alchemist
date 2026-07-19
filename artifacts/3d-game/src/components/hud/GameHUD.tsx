@@ -41,7 +41,14 @@ export default function GameHUD({
     : null;
 
   return (
-    <div className="pointer-events-none absolute inset-0 z-50 select-none font-serif">
+    // z-[52]: just above PuzzleModal's z-50 backdrop (bg-black/70 +
+    // backdrop-blur-sm), which otherwise fully visually covers this HUD
+    // even though it stays mounted — the health bar needs to stay visible
+    // and live while a puzzle is open, since puzzle losses damage the
+    // player in real time. Still below MobileControls (55)/SubtitleBar
+    // (58)/AudioMuteToggle (60)/MinimapOverlay (65), so their existing
+    // relative order is untouched.
+    <div className="pointer-events-none absolute inset-0 z-[52] select-none font-serif">
 
       {/* ── TOP LEFT: Elixir Health Bar ─────────────────────────────── */}
       <div className="absolute left-2 top-2 flex items-center gap-2 sm:left-4 sm:top-4 sm:gap-3">

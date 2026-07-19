@@ -9,8 +9,9 @@
  * moves first shows a failure state with a restart button (fresh board,
  * unlimited attempts).
  */
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePuzzleSound } from "./usePuzzleSound";
+import { playVoiceLine } from "../../audio/voice";
 
 interface AlchemyMatch3GameProps {
   onWin: () => void;
@@ -22,6 +23,7 @@ const INGREDIENT_COUNT = 5;
 const INGREDIENTS = ["🔮", "🌿", "⚗️", "🔥", "💧"];
 const MAX_MOVES = 20;
 const CLEAR_TARGET = 15;
+const LOW_MOVES_THRESHOLD = 5;
 
 type Grid = number[][];
 
@@ -115,6 +117,10 @@ export default function AlchemyMatch3Game({ onWin, onLose }: AlchemyMatch3GamePr
   const [invalidFlash, setInvalidFlash] = useState<{ r: number; c: number } | null>(null);
   const [resolving, setResolving] = useState(false);
   const { playClick, playMatch, playWrong, playWin, playLose } = usePuzzleSound();
+  // Fires minigame_lowmoves once per crossing of the threshold, not every
+  // move/render while under it — reset alongside the rest of the run state
+  // in resetBoard so a fresh attempt can trigger it again.
+  const lowMovesFiredRef = useRef(false);
 
   const resetBoard = () => {
     setGrid(makeInitialGrid());
@@ -123,7 +129,19 @@ export default function AlchemyMatch3Game({ onWin, onLose }: AlchemyMatch3GamePr
     setCleared(0);
     setStatus("playing");
     setResolving(false);
+    lowMovesFiredRef.current = false;
   };
+
+  useEffect(() => {
+    if (movesLeft <= LOW_MOVES_THRESHOLD && !lowMovesFiredRef.current) {
+      lowMovesFiredRef.current = true;
+      playVoiceLine(
+        "minigame_lowmoves",
+        "Careful now — you're running out of moves.",
+        { priority: true },
+      );
+    }
+  }, [movesLeft]);
 
   const resolveCascades = (
     startGrid: Grid,

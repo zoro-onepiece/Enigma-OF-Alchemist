@@ -1,9 +1,11 @@
-import { Suspense, useRef, useEffect, useState } from "react";
-import { useFrame } from "@react-three/fiber";
+import { Suspense, useRef, useEffect, useMemo, useState } from "react";
 import { useGLTF, useAnimations, Html } from "@react-three/drei";
+import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { useGameStore } from "../../store/gameStore";
 import { PLAYER_WORLD_POS } from "./Player";
+import { useGameStore } from "../../store/gameStore";
+import { playVoiceLine } from "../../audio/voice";
+import { registerBlocker } from "../../lib/worldCollision";
 
 // How close (world units, XZ-plane) the player must be to see the "Press E
 // to Trade" prompt and have E open the shop.
@@ -13,6 +15,18 @@ const INTERACT_RADIUS = 4;
 // exact same coordinate the 3D scene actually places him at — same pattern
 // as TEMPLE_POSITION/PUZZLE_PLACEMENTS in GameEnvironment.tsx.
 export const MERCHANT_POSITION: [number, number, number] = [15, 0, 20];
+
+// Same proximity-detection shape as GlowingPuzzle.tsx's pedestals (distance
+// to PLAYER_WORLD_POS, checked every frame) — didn't exist on the merchant
+// at all before this; needed so merchant_first_meet has something to
+// trigger off.
+const PROXIMITY_RANGE = 4;
+const merchantPos = new THREE.Vector3(...MERCHANT_POSITION);
+const MERCHANT_SCALE = 15;
+// Small margin added on top of the measured foot-bone spread so the
+// collider covers the model's actual body width, not just the exact foot
+// points.
+const COLLIDER_MARGIN = 0.4;
 
 // 🔍 DEBUG TOGGLE — set to true to force a bright pink material on every
 // mesh (confirms the model itself is actually rendering, independent of
@@ -34,6 +48,66 @@ export default function Merchant() {
   const openShop = useGameStore((s) => s.openShop);
   const phase = useGameStore((s) => s.phase);
 
+  // Yeh line duplicate thi, ab siraf ek dafa hai
+  const spawnPosition: [number, number, number] = DEBUG_SPAWN_NEAR_PLAYER
+    ? [3, 0, 0] // right in front of / above player spawn — impossible to miss
+    : MERCHANT_POSITION;
+
+  // --- Robin's Logic: Collider and Voice Lines ---
+  const footprintRadius = useMemo(() => {
+    scene.updateMatrixWorld(true);
+    let maxDist = 0;
+    scene.traverse((child) => {
+      if (/foot/i.test(child.name)) {
+        const p = new THREE.Vector3();
+        child.getWorldPosition(p);
+        maxDist = Math.max(maxDist, Math.hypot(p.x, p.z));
+      }
+    });
+    return (maxDist || 0.15) * MERCHANT_SCALE + COLLIDER_MARGIN;
+  }, [scene]);
+
+  useEffect(() => {
+    return registerBlocker({
+      minX: spawnPosition[0] - footprintRadius,
+      maxX: spawnPosition[0] + footprintRadius,
+      minZ: spawnPosition[2] - footprintRadius,
+      maxZ: spawnPosition[2] + footprintRadius,
+      isSolid: () => true,
+    });
+  }, [footprintRadius, spawnPosition[0], spawnPosition[2]]);
+
+  useFrame(() => {
+    if (useGameStore.getState().hasMetMerchant) return;
+    const distance = PLAYER_WORLD_POS.distanceTo(merchantPos);
+    if (distance <= PROXIMITY_RANGE) {
+      useGameStore.getState().setHasMetMerchant();
+      playVoiceLine(
+        "merchant_first_meet",
+        "Ah, a new face! Come, browse my wares — alchemical trinkets, all genuine... mostly.",
+        { priority: true },
+      );
+    }
+  });
+
+  // --- Asra's Logic: E to Interact and Open Shop ---
+  useFrame(() => {
+    const dx = spawnPosition[0] - PLAYER_WORLD_POS.x;
+    const dz = spawnPosition[2] - PLAYER_WORLD_POS.z;
+    const isNear = dx * dx + dz * dz <= INTERACT_RADIUS * INTERACT_RADIUS;
+    if (isNear !== nearby) setNearby(isNear);
+  });
+
+  useEffect(() => {
+    if (!nearby) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() === "e" && phase !== "dead") openShop();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [nearby, phase, openShop]);
+
+  // --- Shared Setup ---
   useEffect(() => {
     const actionName = Object.keys(actions)[0];
     if (actionName && actions[actionName]) {
@@ -48,58 +122,16 @@ export default function Merchant() {
 
         if (DEBUG_PINK_MATERIAL) {
           mesh.material = new THREE.MeshStandardMaterial({
-            color: 0xff00ff, // bright pink — impossible to miss
+            color: 0xff00ff,
             emissive: 0xff00ff,
             emissiveIntensity: 0.5,
           });
         }
       }
     });
-
-    // 🔍 DEBUG LOGGING — merchant kahan spawn hua aur uski actual size kya hai
-    // setTimeout(() => {
-    //   if (group.current) {
-    //     const box = new THREE.Box3().setFromObject(group.current);
-    //     const size = new THREE.Vector3();
-    //     box.getSize(size);
-    //     const center = new THREE.Vector3();
-    //     box.getCenter(center);
-
-    //     console.log("🧑‍💼 ====== MERCHANT DEBUG ====== 🧑‍💼");
-    //     console.log("group.current exists:", !!group.current);
-    //     console.log("scene children count:", scene.children.length);
-    //     console.log("World Position (group):", group.current.position);
-    //     console.log(
-    //       "World Center (bounding box):",
-    //       `X: ${center.x.toFixed(2)}, Y: ${center.y.toFixed(2)}, Z: ${center.z.toFixed(2)}`,
-    //     );
-    //     console.log(
-    //       "Actual World Size:",
-    //       `W: ${size.x.toFixed(3)}, H: ${size.y.toFixed(3)}, D: ${size.z.toFixed(3)}`,
-    //     );
-    //     console.log(
-    //       "Is size zero/tiny? (mesh missing or scale wrong):",
-    //       size.x < 0.01 && size.y < 0.01 && size.z < 0.01,
-    //     );
-    //     console.log("Visible flag:", group.current.visible);
-    //     console.log("Mesh names found:");
-    //     scene.traverse((child) => {
-    //       if ((child as THREE.Mesh).isMesh) {
-    //         console.log("  -", child.name, "| visible:", child.visible);
-    //       }
-    //     });
-    //     console.log("================================");
-    //   } else {
-    //     console.error(
-    //       "❌ Merchant group.current is NULL — component may not be mounted!",
-    //     );
-    //   }
-    // }, 1500);
   }, [actions, scene]);
 
-  const spawnPosition: [number, number, number] = DEBUG_SPAWN_NEAR_PLAYER
-    ? [3, 0, 0] // right in front of / above player spawn — impossible to miss
-    : MERCHANT_POSITION;
+ 
 
   // Proximity check against the player's live world position (same
   // PLAYER_WORLD_POS mutable ref Player.tsx updates every frame — see its
@@ -137,15 +169,12 @@ export default function Merchant() {
         ref={group}
         position={spawnPosition}
         rotation={[0, -Math.PI / 4, 0]}
-        scale={15}
+        scale={MERCHANT_SCALE}
         dispose={null}
       >
         <primitive object={scene} />
       </group>
       {nearby && (
-        // Outside the scaled group above (scale={15} would blow up a local
-        // position offset) so this floats a fixed world-space distance
-        // above the merchant's head regardless of his model's scale.
         <group position={[spawnPosition[0], spawnPosition[1] + 3, spawnPosition[2]]}>
           <Html center distanceFactor={10} pointerEvents="none">
             <div className="whitespace-nowrap rounded border border-amber-500/60 bg-black/70 px-3 py-1.5 text-xs text-white">
