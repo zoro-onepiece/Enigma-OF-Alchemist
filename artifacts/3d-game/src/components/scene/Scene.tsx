@@ -410,6 +410,7 @@ export default function Scene({
         health={playerHp}
         maxHealth={playerMaxHp}
         score={score}
+        arcanaCoins={useGameStore((s) => s.arcanaCoins)}
         essences={essences}
         walletAddress={walletAddress as never}
         onConnectWallet={onConnectWallet}

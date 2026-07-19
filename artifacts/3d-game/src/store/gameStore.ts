@@ -43,10 +43,10 @@ export interface OwnedRelic {
 // tokenURI points at the static metadata JSON served from public/metadata/
 // (see LockerModal.tsx for display, Scene.tsx for the mint-on-solve wiring).
 export const PUZZLE_RELICS: Record<string, { name: string; image: string; tokenURI: string }> = {
-  "puzzle-1": { name: "Philosopher's Stone", image: "/relics/1.png", tokenURI: "/metadata/1.json" },
+  "puzzle-1": { name: "Book of Awakening", image: "/relics/1.png", tokenURI: "/metadata/1.json" },
   "puzzle-2": { name: "Elixir of Life", image: "/relics/2.png", tokenURI: "/metadata/2.json" },
-  "puzzle-3": { name: "Mystic Hourglass", image: "/relics/3.png", tokenURI: "/metadata/3.json" },
-  "puzzle-4": { name: "Aether Compass", image: "/relics/4.png", tokenURI: "/metadata/4.json" },
+  "puzzle-3": { name: "Magical Wand", image: "/relics/3.png", tokenURI: "/metadata/3.json" },
+  "puzzle-4": { name: "Scroll of Death", image: "/relics/4.png", tokenURI: "/metadata/4.json" },
 };
 
 // The API server only answers under the reverse proxy (see CLAUDE.md: "always
@@ -118,6 +118,8 @@ interface GameStore {
   // the start of every new attempt.
   skinPurchaseError: string | null;
 
+  arcanaCoins: number;
+
   // Puzzle-reward NFTs actually minted on-chain via /api/rewards/mint (see
   // mintPuzzleReward below). Not part of createInitialRunState — these are
   // real minted tokens, a death/restart doesn't burn them.
@@ -152,6 +154,7 @@ interface GameStore {
   // Equips an already-owned skin; no-ops if the skin isn't owned (see
   // LockerModal.tsx).
   equipSkin: (skinId: SkinId) => void;
+  deductArcanaCoins: (amount: number) => void;
   // Calls /api/rewards/mint (Openfort-sponsored mintPuzzleReward) for the
   // relic mapped to this puzzle in PUZZLE_RELICS. Best-effort: a failed
   // mint is logged, not thrown, so it never blocks the puzzle-solved
@@ -182,6 +185,7 @@ function createInitialRunState() {
     inventoryOpen: false,
     shopOpen: false,
     finaleClaimed: false,
+    arcanaCoins: 500,
   };
 }
 
@@ -257,6 +261,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   buySkin: async (skinId, playerAddress) => {
     set({ skinPurchaseError: null });
+    const cost = 200; // Fixed price for all skins for now
+    if (get().arcanaCoins < cost) {
+      set({ skinPurchaseError: "Insufficient Arcana Coins" });
+      return false;
+    }
+    
     try {
       // Step 1: challenge — expect a 402 with x402 payment requirements.
       const challenge = await fetch("/api/merchant/checkout", {
@@ -285,7 +295,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
       const data = await parseJsonSafe(settle);
       if (!settle.ok || !data.success) throw new Error(data.error ?? "Checkout failed");
 
-      set((s) => ({ ownedSkins: new Set(s.ownedSkins).add(skinId) }));
+      set((s) => ({
+        ownedSkins: new Set(s.ownedSkins).add(skinId),
+        arcanaCoins: s.arcanaCoins - cost,
+      }));
       return true;
     } catch (err) {
       set({ skinPurchaseError: err instanceof Error ? err.message : "Purchase failed" });
@@ -295,6 +308,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   equipSkin: (skinId) =>
     set((s) => (s.ownedSkins.has(skinId) ? { equippedSkin: skinId } : s)),
+    
+  deductArcanaCoins: (amount) => set((s) => ({ arcanaCoins: Math.max(0, s.arcanaCoins - amount) })),
 
   mintPuzzleReward: async (puzzleId, playerAddress) => {
     const relic = PUZZLE_RELICS[puzzleId];
