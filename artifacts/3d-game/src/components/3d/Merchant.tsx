@@ -31,7 +31,7 @@ export default function Merchant() {
   const { actions } = useAnimations(animations, group);
 
   const [nearby, setNearby] = useState(false);
-  const openInventory = useGameStore((s) => s.openInventory);
+  const openShop = useGameStore((s) => s.openShop);
   const phase = useGameStore((s) => s.phase);
 
   useEffect(() => {
@@ -125,11 +125,11 @@ export default function Merchant() {
     // requiring "exploring" here would block E for anyone who reaches the
     // Merchant before ever touching a puzzle.
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key.toLowerCase() === "e" && phase !== "dead") openInventory();
+      if (e.key.toLowerCase() === "e" && phase !== "dead") openShop();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [nearby, phase, openInventory]);
+  }, [nearby, phase, openShop]);
 
   return (
     <Suspense fallback={null}>

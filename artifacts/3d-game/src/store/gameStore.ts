@@ -7,19 +7,17 @@
  * Rules:
  *   - Keep this store flat; avoid nesting.
  *   - Expensive derived values (e.g. sorted monster list) live in selectors, not state.
- *   - On-chain state (NFTs, puzzle completions) is fetched separately via hooks.
  *
  * TODO:
- *   - Install zustand: pnpm --filter @workspace/3d-game add zustand
  *   - Add immer middleware for complex state mutations
  *   - Persist level/xp to localStorage with zustand/middleware/persist
  */
 import { create } from "zustand";
 
-export type GamePhase = "menu" | "exploring" | "puzzle" | "inventory" | "dead";
+export type GamePhase = "menu" | "exploring" | "puzzle" | "shop" | "inventory" | "dead";
 
 // Skin catalog ids — must match EnigmaRelics.sol's SKIN_* constants and the
-// Merchant shop listing (see ShopInventoryModal.tsx).
+// Merchant shop listing (see MerchantShop.tsx).
 export type SkinId = 1 | 2 | 3;
 
 export interface Monster {
@@ -32,6 +30,39 @@ export interface Monster {
 export interface PuzzleState {
   activeId: string | null;
   solved: Set<string>;
+}
+
+export interface OwnedRelic {
+  puzzleId: string;
+  name: string;
+  image: string;
+  txHash: string | null;
+}
+
+// Puzzle-reward NFT catalog — one alchemist-themed relic per world puzzle.
+// tokenURI points at the static metadata JSON served from public/metadata/
+// (see LockerModal.tsx for display, Scene.tsx for the mint-on-solve wiring).
+export const PUZZLE_RELICS: Record<string, { name: string; image: string; tokenURI: string }> = {
+  "puzzle-1": { name: "Philosopher's Stone", image: "/relics/1.png", tokenURI: "/metadata/1.json" },
+  "puzzle-2": { name: "Elixir of Life", image: "/relics/2.png", tokenURI: "/metadata/2.json" },
+  "puzzle-3": { name: "Mystic Hourglass", image: "/relics/3.png", tokenURI: "/metadata/3.json" },
+  "puzzle-4": { name: "Aether Compass", image: "/relics/4.png", tokenURI: "/metadata/4.json" },
+};
+
+// The API server only answers under the reverse proxy (see CLAUDE.md: "always
+// hit services through the proxy... never a raw service port directly") —
+// hitting a raw dev port directly returns a plain 404/503 with no body.
+// `res.json()` on that throws a cryptic "Unexpected end of JSON input" that
+// masks the real problem, so parse defensively and surface a readable
+// message either way.
+async function parseJsonSafe(res: Response): Promise<{ error?: string; success?: boolean; txHash?: string | null }> {
+  const text = await res.text();
+  if (!text) return { error: `${res.status} ${res.statusText || "No response body"}` };
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { error: `${res.status}: unexpected non-JSON response` };
+  }
 }
 
 interface GameStore {
@@ -53,7 +84,12 @@ interface GameStore {
   monsters: Monster[];
   puzzle: PuzzleState;
   phase: GamePhase;
+  // Locker/Inventory — standalone, toggled by the "I" key or a HUD button
+  // (see LockerModal.tsx), independent of Merchant proximity.
   inventoryOpen: boolean;
+  // Merchant Shop — only opens via Merchant.tsx's "Press E to Trade" prompt
+  // (see MerchantShop.tsx).
+  shopOpen: boolean;
 
   // Finale (Task 3): whether the player has claimed the reward chest that
   // appears once all 4 essences are collected. Additive to the existing
@@ -72,6 +108,15 @@ interface GameStore {
   // reasoning as hasSeenIntro above.
   ownedSkins: Set<SkinId>;
   equippedSkin: SkinId | null;
+  // Surfaced by buySkin() below for MerchantShop.tsx to display; cleared at
+  // the start of every new attempt.
+  skinPurchaseError: string | null;
+
+  // Puzzle-reward NFTs actually minted on-chain via /api/rewards/mint (see
+  // mintPuzzleReward below). Not part of createInitialRunState — these are
+  // real minted tokens, a death/restart doesn't burn them.
+  ownedRelics: OwnedRelic[];
+  isMintingReward: boolean;
 
   // Actions
   setGameState: (patch: Partial<GameStore>) => void;
@@ -85,14 +130,23 @@ interface GameStore {
   solvePuzzle: (id: string) => void;
   openInventory: () => void;
   closeInventory: () => void;
+  openShop: () => void;
+  closeShop: () => void;
   claimFinale: () => void;
   setHasSeenIntro: () => void;
-  // Marks a skin as owned after a successful x402 checkout (see
-  // ShopInventoryModal.tsx's Shop tab).
-  purchaseSkin: (skinId: SkinId) => void;
+  // Full x402 checkout handshake against /api/merchant/checkout — challenge,
+  // then settle with a payment header, then marks the skin owned on
+  // success. Returns whether the purchase succeeded (MerchantShop.tsx uses
+  // this to drive its own per-button "Buying…" spinner state).
+  buySkin: (skinId: SkinId, playerAddress: string) => Promise<boolean>;
   // Equips an already-owned skin; no-ops if the skin isn't owned (see
-  // ShopInventoryModal.tsx's Inventory tab).
+  // LockerModal.tsx).
   equipSkin: (skinId: SkinId) => void;
+  // Calls /api/rewards/mint (Openfort-sponsored mintPuzzleReward) for the
+  // relic mapped to this puzzle in PUZZLE_RELICS. Best-effort: a failed
+  // mint is logged, not thrown, so it never blocks the puzzle-solved
+  // celebration UI which has already run via solvePuzzle().
+  mintPuzzleReward: (puzzleId: string, playerAddress: string | null) => Promise<void>;
   // Death + restart: resets the run back to a fresh start after Game Over's
   // "Try Again" — full heal, puzzles/score/phase reset, world position
   // reset (via Player.tsx's teleportPlayerToSpawn, called by the caller
@@ -116,17 +170,21 @@ function createInitialRunState() {
     monsters: [] as Monster[],
     puzzle: { activeId: null, solved: new Set<string>() } as PuzzleState,
     inventoryOpen: false,
+    shopOpen: false,
     finaleClaimed: false,
   };
 }
 
-export const useGameStore = create<GameStore>((set) => ({
+export const useGameStore = create<GameStore>((set, get) => ({
   // ─── Initial state ──────────────────────────────────────────────────────────
   ...createInitialRunState(),
   phase: "menu",
   hasSeenIntro: false,
   ownedSkins: new Set<SkinId>(),
   equippedSkin: null,
+  skinPurchaseError: null,
+  ownedRelics: [],
+  isMintingReward: false,
 
   // ─── Actions ─────────────────────────────────────────────────────────────────
   setGameState: (patch) => set(patch),
@@ -176,15 +234,85 @@ export const useGameStore = create<GameStore>((set) => ({
   openInventory: () => set({ inventoryOpen: true, phase: "inventory" }),
   closeInventory: () => set({ inventoryOpen: false, phase: "exploring" }),
 
+  openShop: () => set({ shopOpen: true, phase: "shop" }),
+  closeShop: () => set({ shopOpen: false, phase: "exploring" }),
+
   claimFinale: () => set({ finaleClaimed: true }),
 
   setHasSeenIntro: () => set({ hasSeenIntro: true }),
 
-  purchaseSkin: (skinId) =>
-    set((s) => ({ ownedSkins: new Set(s.ownedSkins).add(skinId) })),
+  buySkin: async (skinId, playerAddress) => {
+    set({ skinPurchaseError: null });
+    try {
+      // Step 1: challenge — expect a 402 with x402 payment requirements.
+      const challenge = await fetch("/api/merchant/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ skinId, playerAddress }),
+      });
+
+      if (challenge.status !== 402) {
+        const data = await parseJsonSafe(challenge);
+        throw new Error(data.error ?? "Unexpected checkout response");
+      }
+
+      // Step 2: settle. TODO: sign the returned `accepts` requirement with
+      // the player's wallet instead of this placeholder header — see
+      // checkout.ts's "Known gap" note (x402 has no native-ETH scheme
+      // without a facilitator service to verify against).
+      const settle = await fetch("/api/merchant/checkout", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-PAYMENT": "placeholder-payment-authorization",
+        },
+        body: JSON.stringify({ skinId, playerAddress }),
+      });
+      const data = await parseJsonSafe(settle);
+      if (!settle.ok || !data.success) throw new Error(data.error ?? "Checkout failed");
+
+      set((s) => ({ ownedSkins: new Set(s.ownedSkins).add(skinId) }));
+      return true;
+    } catch (err) {
+      set({ skinPurchaseError: err instanceof Error ? err.message : "Purchase failed" });
+      return false;
+    }
+  },
 
   equipSkin: (skinId) =>
     set((s) => (s.ownedSkins.has(skinId) ? { equippedSkin: skinId } : s)),
+
+  mintPuzzleReward: async (puzzleId, playerAddress) => {
+    const relic = PUZZLE_RELICS[puzzleId];
+    if (!relic || !playerAddress) return;
+    // Already minted this run (or from a previous session, if this were
+    // persisted) — don't re-mint.
+    if (get().ownedRelics.some((r) => r.puzzleId === puzzleId)) return;
+
+    set({ isMintingReward: true });
+    try {
+      const tokenURI = `${window.location.origin}${relic.tokenURI}`;
+      const res = await fetch("/api/rewards/mint", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ puzzleId, playerAddress, tokenURI }),
+      });
+      const data = await parseJsonSafe(res);
+      if (!res.ok || !data.success) throw new Error(data.error ?? "Mint failed");
+
+      set((s) => ({
+        ownedRelics: [
+          ...s.ownedRelics,
+          { puzzleId, name: relic.name, image: relic.image, txHash: data.txHash ?? null },
+        ],
+      }));
+    } catch (err) {
+      // Best-effort — see the doc comment on this action above.
+      console.error("[gameStore] mintPuzzleReward failed:", err);
+    } finally {
+      set({ isMintingReward: false });
+    }
+  },
 
   restartRun: () =>
     set((s) => ({

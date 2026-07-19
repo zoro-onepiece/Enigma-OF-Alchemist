@@ -23,6 +23,9 @@ export default function GameHUD({
   // Task D: puzzle-location map toggle — desktop "M" key or this icon.
   mapOpen = false,
   onToggleMap = () => {},
+  // Locker/Inventory toggle — desktop "I" key or this icon.
+  lockerOpen = false,
+  onToggleLocker = () => {},
   // Task B: true on touch/narrow-viewport devices — reserves extra bottom
   // clearance under the score/inventory panel so it never sits under the
   // on-screen action button (both are bottom-right).
@@ -90,6 +93,19 @@ export default function GameHUD({
           ].join(" ")}
         >
           🗺️
+        </button>
+        <button
+          onClick={onToggleLocker}
+          title={lockerOpen ? "Close locker (I)" : "Open locker (I)"}
+          aria-pressed={lockerOpen}
+          className={[
+            "pointer-events-auto flex h-11 w-11 items-center justify-center rounded-lg border-2 text-sm shadow-[0_0_14px_rgba(217,119,6,0.35)] backdrop-blur-sm transition-all hover:scale-105 active:scale-95 sm:h-[42px] sm:w-[42px] sm:text-lg",
+            lockerOpen
+              ? "border-amber-300 bg-amber-500/20 text-amber-200"
+              : "border-amber-500/80 bg-gradient-to-b from-stone-800/95 to-emerald-950/95 text-amber-100 hover:border-amber-300 hover:shadow-[0_0_20px_rgba(251,191,36,0.55)]",
+          ].join(" ")}
+        >
+          🎒
         </button>
         <button
           onClick={toggleMute}
