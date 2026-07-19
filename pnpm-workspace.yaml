@@ -35,6 +35,7 @@ minimumReleaseAgeExclude:
   - stripe-replit-sync
 
 packages:
+  - artifacts/api-server
   - artifacts/3d-game
   - lib/*
   - lib/integrations/*

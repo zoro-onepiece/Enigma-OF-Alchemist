@@ -18,6 +18,10 @@ import { create } from "zustand";
 
 export type GamePhase = "menu" | "exploring" | "puzzle" | "inventory" | "dead";
 
+// Skin catalog ids — must match EnigmaRelics.sol's SKIN_* constants and the
+// Merchant shop listing (see ShopInventoryModal.tsx).
+export type SkinId = 1 | 2 | 3;
+
 export interface Monster {
   id: string;
   position: [number, number, number];
@@ -68,6 +72,12 @@ interface GameStore {
   // sprint" lines any more than it should replay the intro.
   hasMetMerchant: boolean;
   hasSprinted: boolean;
+  // Merchant skins (Openfort x402 purchases): which skins the connected
+  // wallet owns and which one is currently equipped. Not part of
+  // createInitialRunState — a death/restart shouldn't un-buy a skin, same
+  // reasoning as hasSeenIntro above.
+  ownedSkins: Set<SkinId>;
+  equippedSkin: SkinId | null;
 
   // Actions
   setGameState: (patch: Partial<GameStore>) => void;
@@ -85,6 +95,12 @@ interface GameStore {
   setHasSeenIntro: () => void;
   setHasMetMerchant: () => void;
   setHasSprinted: () => void;
+  // Marks a skin as owned after a successful x402 checkout (see
+  // ShopInventoryModal.tsx's Shop tab).
+  purchaseSkin: (skinId: SkinId) => void;
+  // Equips an already-owned skin; no-ops if the skin isn't owned (see
+  // ShopInventoryModal.tsx's Inventory tab).
+  equipSkin: (skinId: SkinId) => void;
   // Death + restart: resets the run back to a fresh start after Game Over's
   // "Try Again" — full heal, puzzles/score/phase reset, world position
   // reset (via Player.tsx's teleportPlayerToSpawn, called by the caller
@@ -119,6 +135,8 @@ export const useGameStore = create<GameStore>((set) => ({
   hasSeenIntro: false,
   hasMetMerchant: false,
   hasSprinted: false,
+  ownedSkins: new Set<SkinId>(),
+  equippedSkin: null,
 
   // ─── Actions ─────────────────────────────────────────────────────────────────
   setGameState: (patch) => set(patch),
@@ -173,6 +191,12 @@ export const useGameStore = create<GameStore>((set) => ({
   setHasSeenIntro: () => set({ hasSeenIntro: true }),
   setHasMetMerchant: () => set({ hasMetMerchant: true }),
   setHasSprinted: () => set({ hasSprinted: true }),
+
+  purchaseSkin: (skinId) =>
+    set((s) => ({ ownedSkins: new Set(s.ownedSkins).add(skinId) })),
+
+  equipSkin: (skinId) =>
+    set((s) => (s.ownedSkins.has(skinId) ? { equippedSkin: skinId } : s)),
 
   restartRun: () =>
     set((s) => ({
