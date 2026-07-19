@@ -152,6 +152,29 @@ export default function Scene({
   const finaleClaimed = useGameStore((s) => s.finaleClaimed);
   const [finaleOverlayDismissed, setFinaleOverlayDismissed] = useState(false);
 
+  // Emergency GPU-stability pass: staggered mount waterfall, following a
+  // confirmed WebGL context loss in the browser console. Previously every
+  // GLB in the world (trees, leaves, flowers, butterflies, clouds,
+  // merchant) mounted simultaneously the instant Scene became visible —
+  // all their texture uploads hitting the GPU in the same frame or two.
+  // Player + the procedural ground/pathway/temple/puzzles (no GLB) mount
+  // immediately (mountStage 0); trees mount at +500ms (mountStage 1);
+  // the remaining decorative GLB layers — leaves/flowers/butterflies/
+  // DistantScenery via GameEnvironment's mountDecor prop, plus clouds and
+  // the merchant, both owned directly here — mount at +1000ms (mountStage
+  // 2). Two independent timers (not chained) scheduled together on mount;
+  // both are cleared on unmount so a fast page-away doesn't fire a
+  // setState on an unmounted component.
+  const [mountStage, setMountStage] = useState(0);
+  useEffect(() => {
+    const t1 = window.setTimeout(() => setMountStage(1), 500);
+    const t2 = window.setTimeout(() => setMountStage(2), 1000);
+    return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+    };
+  }, []);
+
   // Task D: puzzle-location map — desktop toggles with "M", mobile taps the
   // icon button GameHUD renders (both drive this same bit of state, so
   // there's exactly one toggle path regardless of input device).
@@ -257,11 +280,46 @@ export default function Scene({
           "before" Player.tsx in the data flow. */}
       <KeyboardControls map={gamePhase === "dead" ? [] : playerKeyboardMap}>
         <Canvas
-          shadows
+          // Emergency GPU-stability pass: shadows forced off unconditionally
+          // (confirmed WebGL context loss in browser console — the driver
+          // is terminating the context under GPU load). When `shadows` is
+          // false, three.js's renderer skips its entire shadow-map render
+          // pass at the top of the frame loop (WebGLShadowMap.render() is
+          // gated on `shadowMap.enabled`, which this prop controls) — no
+          // shadow-camera passes, no shadow texture allocation/updates at
+          // all, regardless of how many meshes still have castShadow/
+          // receiveShadow=true. Those per-mesh flags become fully inert
+          // once this is false; leaving them in place costs nothing at
+          // runtime, so they're deliberately NOT being stripped from the
+          // ~22 files that set them — that would be a large, mechanical,
+          // purely-cosmetic diff with zero effect on the actual GPU load
+          // this fix addresses.
+          shadows={false}
           dpr={[1, 1.5]}
           camera={{ position: [0, 3, 8], fov: 50, near: 0.1, far: 500 }}
           gl={{ antialias: true, alpha: false }}
           style={{ background: "#0a0a18" }}
+          onCreated={({ gl }) => {
+            // Doesn't prevent context loss (that's what the other fixes in
+            // this pass are for) — this only stops it from being a
+            // PERMANENT white screen. preventDefault() on the lost event
+            // tells the browser to attempt automatic restoration instead
+            // of leaving the context dead; a full reload on restore is the
+            // pragmatic recovery since resuming a lost WebGL context
+            // in-place while preserving all of R3F's internal GPU-resource
+            // state correctly is fragile enough not to trust for a clean
+            // recovery.
+            gl.domElement.addEventListener("webglcontextlost", (e) => {
+              e.preventDefault();
+              // eslint-disable-next-line no-console
+              console.error("WebGL context lost — attempting restore");
+            });
+            gl.domElement.addEventListener("webglcontextrestored", () => {
+              // eslint-disable-next-line no-console
+              console.log("WebGL context restored");
+              window.location.reload();
+            });
+          }}
         >
           {showStats && <Stats />}
           {/* ── Lighting ──────────────────────────────────────────────────── */}
@@ -282,17 +340,23 @@ export default function Scene({
             mieDirectionalG={0.7}
           />
           <Environment preset="park" background={false} />
-          {/* limit raised to 170 alongside the cloud count below (9 -> 17)
-              — drei's <Clouds> shares this instance budget across every
-              <Cloud> child, so more clouds need more headroom or the later
-              ones would visibly thin out. texture={cloudTexture}: see
+          {/* Emergency GPU-stability pass: cut 17 -> 8 clouds, limit
+              170 -> 60 (confirmed WebGL context loss in browser console —
+              each drei <Cloud> renders multiple overlapping planes, and
+              <Clouds> shares one instance budget across every child, so
+              both the per-cloud plane count AND the shared ceiling needed
+              to come down together). texture={cloudTexture}: see
               getCloudTextureDataUrl() above — drei's default external CDN
               texture 403s, which was the actual reason clouds were
-              invisible despite being correctly positioned/instanced. */}
+              invisible in an earlier, unrelated investigation. Also part
+              of the mountStage>=2 stagger below — clouds are a visual
+              luxury, no reason for them to compete with player/ground/
+              trees for the first second's GPU upload budget. */}
+          {mountStage >= 2 && (
           <Clouds
             material={THREE.MeshBasicMaterial}
             texture={cloudTexture}
-            limit={170}
+            limit={60}
             range={60}
           >
             <Cloud
@@ -363,81 +427,8 @@ export default function Scene({
               opacity={0.5}
               speed={0.065}
             />
-            <Cloud
-              seed={77}
-              position={[5, 90, -10]}
-              bounds={[36, 7, 36]}
-              volume={17}
-              opacity={0.6}
-              speed={0.05}
-            />
-            {/* ── Further increase, 9 -> 17 total, same style/spread
-                convention as the previous batch. ─────────────────────── */}
-            <Cloud
-              seed={88}
-              position={[-90, 50, -20]}
-              bounds={[40, 8, 40]}
-              volume={21}
-              opacity={0.55}
-              speed={0.05}
-            />
-            <Cloud
-              seed={99}
-              position={[95, 58, 15]}
-              bounds={[43, 9, 43]}
-              volume={23}
-              opacity={0.5}
-              speed={0.06}
-            />
-            <Cloud
-              seed={111}
-              position={[-20, 95, 60]}
-              bounds={[39, 8, 39]}
-              volume={19}
-              opacity={0.55}
-              speed={0.045}
-            />
-            <Cloud
-              seed={122}
-              position={[45, 35, 80]}
-              bounds={[37, 7, 37]}
-              volume={18}
-              opacity={0.6}
-              speed={0.065}
-            />
-            <Cloud
-              seed={133}
-              position={[-60, 78, -85]}
-              bounds={[46, 10, 46]}
-              volume={24}
-              opacity={0.5}
-              speed={0.05}
-            />
-            <Cloud
-              seed={144}
-              position={[15, 65, -75]}
-              bounds={[41, 9, 41]}
-              volume={20}
-              opacity={0.55}
-              speed={0.055}
-            />
-            <Cloud
-              seed={155}
-              position={[70, 88, -35]}
-              bounds={[44, 10, 44]}
-              volume={22}
-              opacity={0.5}
-              speed={0.06}
-            />
-            <Cloud
-              seed={166}
-              position={[-35, 42, 95]}
-              bounds={[36, 7, 36]}
-              volume={17}
-              opacity={0.6}
-              speed={0.05}
-            />
           </Clouds>
+          )}
           {/* Explicit background + fog so the horizon blends seamlessly with
             the sky at any zoom/camera distance — no white gaps beyond the
             ground plane or Sky dome. GameEnvironment.tsx intentionally does
@@ -453,12 +444,15 @@ export default function Scene({
             args={[SKY_COLOR, 60 * ISLAND_SCALE, 300 * ISLAND_SCALE]}
           />
           {/* ── Code-generated Japanese temple garden environment ────────────
-            Ground, pathway, temple, trees, and puzzle props — see
-            GameEnvironment.tsx and its environment/ subcomponents. No GLB
-            models are loaded here. */}
-          <GameEnvironment />
-          {/* ── Merchant ──────────────────────────────────────────────────── */}
-          <Merchant /> 
+            Ground/pathway/temple/puzzles are procedural (no GLB, always
+            render). Trees and decorative GLB layers (leaves/flowers/
+            butterflies/DistantScenery) are gated by mountStage — see
+            GameEnvironment.tsx's mountTrees/mountDecor props and the
+            mountStage stagger effect above. ──────────────────────────── */}
+          <GameEnvironment mountTrees={mountStage >= 1} mountDecor={mountStage >= 2} />
+          {/* ── Merchant — part of the mountStage>=2 stagger, same
+              reasoning as clouds/decor above. ──────────────────────────── */}
+          {mountStage >= 2 && <Merchant />}
           {/* --- YAHAN MERCHANT ADD KAREIN */}
           {/* ── Player ────────────────────────────────────────────────────── */}
           <Player />

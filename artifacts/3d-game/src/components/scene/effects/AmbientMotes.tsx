@@ -11,6 +11,16 @@
 import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
+import { PLAYER_WORLD_POS } from "../../3d/Player";
+
+// Performance pass: this ran its full 220-particle loop (3 trig calls
+// each, ~660/frame) unconditionally, even when the player is far enough
+// from the island's center that these motes aren't visible or relevant.
+// Gated on player distance from world origin — skip the entire loop (and
+// hide the points mesh, so it's not still submitted to the GPU either)
+// once the player wanders past this radius.
+const ANIMATE_RADIUS = 80;
+const ANIMATE_RADIUS_SQ = ANIMATE_RADIUS * ANIMATE_RADIUS;
 
 export interface AmbientMotesProps {
   count?: number;
@@ -50,6 +60,15 @@ export default function AmbientMotes({
   useFrame((state) => {
     const points = pointsRef.current;
     if (!points) return;
+
+    const dx = PLAYER_WORLD_POS.x;
+    const dz = PLAYER_WORLD_POS.z;
+    if (dx * dx + dz * dz > ANIMATE_RADIUS_SQ) {
+      points.visible = false;
+      return;
+    }
+    points.visible = true;
+
     const posAttr = points.geometry.attributes.position as THREE.BufferAttribute;
     const arr = posAttr.array as Float32Array;
     const t = state.clock.elapsedTime;

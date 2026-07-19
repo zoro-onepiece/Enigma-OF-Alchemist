@@ -20,10 +20,23 @@
 // Scene's own internal GameHUD displays them. Scene/GameHUD were not
 // otherwise modified.
 
-import React, { useEffect, useRef, useState } from "react";
-import Scene from "@/components/scene/Scene";
+import React, { Suspense, lazy, useEffect, useRef, useState } from "react";
 import MainMenu from "@/MainMenu";
 import IntroStory from "@/components/story/IntroStory";
+import LoadingScreen from "@/components/story/LoadingScreen";
+import WebGLErrorBoundary from "@/components/scene/WebGLErrorBoundary";
+
+// Scene pulls in the entire three.js/@react-three/fiber/drei stack (the
+// vendor-three chunk, ~1.24MB — see vite.config.ts's manualChunks) plus
+// every GLB the world needs. A static top-level import meant that whole
+// chunk was fetched/parsed before the AUTH SCREEN could even render, even
+// though nobody needs 3D rendering until after login + IntroStory.
+// React.lazy defers the import() until Scene is actually about to be
+// rendered (isLoggedIn && hasSeenIntro, below), so the vendor-three chunk
+// downloads while the user is on MainMenu/IntroStory instead of blocking
+// them — see LoadingScreen.tsx for the Suspense fallback shown while that
+// download is in flight.
+const Scene = lazy(() => import("@/components/scene/Scene"));
 import { useGameStore } from "@/store/gameStore";
 import { setVoidAmbienceActive, stopMusic, markUserInteracted as markAudioInteracted } from "@/audio/sounds";
 import {
@@ -196,7 +209,17 @@ export default function App() {
 
       {isLoggedIn && hasSeenIntro && (
         <>
-          <Scene walletAddress={walletAddress} onConnectWallet={handleLogout} />
+          {/* WebGLErrorBoundary (existed on disk, unused until now) mounted
+              above Canvas/Scene so a render crash shows a visible error
+              instead of an uncaught exception unmounting the whole app to
+              a blank white screen. Suspense (with LoadingScreen fallback)
+              is INSIDE the error boundary so a crash during the lazy chunk
+              load itself is also caught. */}
+          <WebGLErrorBoundary>
+            <Suspense fallback={<LoadingScreen />}>
+              <Scene walletAddress={walletAddress} onConnectWallet={handleLogout} />
+            </Suspense>
+          </WebGLErrorBoundary>
 
           {/* Small banner so dev sessions are never mistaken for real auth */}
           {isDevSession && (

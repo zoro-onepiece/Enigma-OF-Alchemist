@@ -13,7 +13,26 @@
       "Bash(pnpm run *)",
       "Bash(grep *)",
       "Bash(cat)",
-      "Bash(rm count_leaves.mjs)"
+      "Bash(rm count_leaves.mjs)",
+      "Bash(npx --yes @gltf-transform/cli --version)",
+      "Bash(npx --yes @gltf-transform/cli optimize --help)",
+      "Bash(mkdir -p /tmp/glb_opt_test)",
+      "Bash(cp public/models/autumn_tree_pack.glb /tmp/glb_opt_test/autumn_orig.glb)",
+      "Bash(npx --yes @gltf-transform/cli optimize /tmp/glb_opt_test/autumn_orig.glb /tmp/glb_opt_test/autumn_optimized.glb --compress meshopt)",
+      "Bash(pnpm add *)",
+      "Bash(npx --yes @gltf-transform/cli meshopt --help)",
+      "Bash(npx --yes @gltf-transform/cli meshopt /tmp/glb_opt_test/autumn_orig.glb /tmp/glb_opt_test/autumn_meshopt_only.glb)",
+      "Bash(npx --yes @gltf-transform/cli dedup /tmp/glb_opt_test/autumn_orig.glb /tmp/glb_opt_test/autumn_dedup.glb)",
+      "Bash(npx --yes @gltf-transform/cli meshopt /tmp/glb_opt_test/autumn_dedup.glb /tmp/glb_opt_test/autumn_dedup_meshopt.glb)",
+      "Bash(npx --yes @gltf-transform/cli inspect /tmp/glb_opt_test/autumn_orig.glb)",
+      "Bash(npx --yes @gltf-transform/cli webp --help)",
+      "Bash(npx --yes @gltf-transform/cli webp /tmp/glb_opt_test/autumn_dedup_meshopt.glb /tmp/glb_opt_test/autumn_full.glb)",
+      "Bash(cp glb_batch_test/autumn_tree_pack_final.glb public/models/autumn_tree_pack.glb)",
+      "Bash(cp glb_batch_test/forest_tree_pack_final.glb public/models/forest_tree_pack.glb)",
+      "Bash(cp glb_batch_test/flower_pack_final.glb public/models/flower_pack.glb)",
+      "Bash(cp glb_batch_test/anemone_flower_final.glb public/models/anemone_flower.glb)",
+      "Bash(cp glb_batch_test/butterfly_final.glb public/models/butterfly.glb)",
+      "Bash(pnpm remove *)"
     ]
   }
 }

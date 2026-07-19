@@ -9,9 +9,7 @@ import { PLAYER_WORLD_POS } from "../../3d/Player";
  *
  * Separate, standalone ground-litter system — NOT related to SprintLeaves
  * (the character's sprint fx). Scatters ~100,000 low_poly_leaves.glb leaves
- * flat across the walkable ground, GPU-instanced (one InstancedMesh per
- * leaf shape = 2 draw calls total, same convention FlowerField uses for its
- * opaque/transparent split).
+ * flat across the walkable ground, GPU-instanced.
  *
  * "Lying flat" orientation was measured, not guessed: both leaf shapes'
  * local Z axis is their smallest bounding-box dimension (~1.6 vs ~2.2-2.7 on
@@ -20,24 +18,31 @@ import { PLAYER_WORLD_POS } from "../../3d/Player";
  * leaves Z as the thin vertical axis, which reads as a flat leaf resting on
  * the ground rather than standing on edge.
  *
- * ── Player-proximity "blow away" reaction, without a 100k-wide scan ──────
- * Placements are bucketed once (at generation time) into a spatial hash
- * keyed by floor(x/BUCKET_SIZE),floor(z/BUCKET_SIZE). Every frame, only the
- * 3x3 bucket neighborhood around the player's *current* bucket is read
- * (a handful of leaves — tens, not 100,000) to find newly-nearby leaves to
- * disturb; the neighborhood re-scan itself only runs on frames where the
- * player has actually crossed into a new bucket, not every single frame.
- * Currently-disturbed leaves (bounded by MAX_CONCURRENT_DISTURBED) animate
- * a quick kick-away-and-settle over DISTURB_DURATION seconds, then their
- * matrix is written back to the exact base (rest) transform.
+ * ── Performance pass: spatial-chunk frustum culling ─────────────────────
+ * Previously this was 2 InstancedMeshes total (one per leaf shape, all
+ * ~97,910 instances each), both with frustumCulled={false} — every leaf
+ * submitted to the GPU every frame regardless of camera direction, for the
+ * same reason GrassField.tsx's old single-mesh version had to disable it:
+ * one InstancedMesh's bounding sphere covers the WHOLE placement set, so
+ * any camera angle that sees even one leaf means nothing can be culled.
  *
- * GPU upload cost: instanceMatrix.addUpdateRange() (three r159+, confirmed
- * available and honored by WebGLAttributes in this project's three@0.185.0)
- * marks only the changed instances' 16 floats for re-upload — not the
- * mesh's 100,000-instance buffer — so a typical frame (0-30 leaves
- * disturbed while sprinting past them) uploads a few KB, not the ~6.4MB the
- * full buffer would cost. On fully idle frames (nothing disturbed) the
- * instancedMesh isn't touched at all.
+ * Splitting each shape's placements into a 4x4 spatial grid (16 chunks,
+ * computed from the actual placement bounding box — no dependency on
+ * GameEnvironment's world-size constants) gives each chunk its own
+ * InstancedMesh with its own bounding sphere, so plain frustumCulled=true
+ * (three.js's default — confirmed via source in an earlier pass that
+ * InstancedMesh auto-computes an instance-aware bounding sphere the first
+ * time the frustum check runs) correctly skips chunks outside the camera's
+ * view. 2 shapes x up to 16 chunks = up to 32 draw calls (fewer in
+ * practice — see the mount-time count below) — more draw calls than the
+ * old 2, but each one is skippable; the old 2 never were.
+ *
+ * ── Player-proximity "blow away" reaction ─────────────────────────────
+ * Unchanged in spirit from the pre-chunking version, just re-scoped per
+ * chunk: each chunk keeps its own fine-grained spatial-hash bucket index
+ * (BUCKET_SIZE=2, independent of and much finer than the 4x4 culling
+ * grid) so the proximity scan still only ever touches a handful of
+ * candidates, never iterates all placements.
  */
 const MODEL_PATH = "/models/low_poly_leaves.glb";
 const LEAF_NODE_NAMES = ["Object_2", "Object_3"];
@@ -52,14 +57,13 @@ const RAW_LEAF_SIZE = 2.69;
 const TARGET_LEAF_SIZE = 0.13;
 const LEAF_SCALE = TARGET_LEAF_SIZE / RAW_LEAF_SIZE;
 
-const BUCKET_SIZE = 2; // world units per spatial-hash cell
+const BUCKET_SIZE = 2; // world units per disturbance spatial-hash cell
 const BLOW_RADIUS = 1.8;
 const BLOW_RADIUS_SQ = BLOW_RADIUS * BLOW_RADIUS;
 const DISTURB_DURATION = 0.6; // seconds: kick away, then settle back
-// Hard cap on simultaneously-animating leaves so a single frame's animation
-// work stays bounded even in the worst case (player standing still in an
-// unusually leaf-dense bucket cluster).
 const MAX_CONCURRENT_DISTURBED = 200;
+
+const CHUNK_GRID = 4; // 4x4 = 16 spatial chunks for frustum culling
 
 export interface GroundLeafPlacement {
   position: [number, number, number];
@@ -80,7 +84,9 @@ interface DisturbedEntry {
   dirZ: number;
 }
 
-interface ShapeGroup {
+interface RenderGroup {
+  key: string;
+  shapeIndex: number;
   matrices: THREE.Matrix4[];
   buckets: Map<string, number[]>;
 }
@@ -95,18 +101,42 @@ export default function GroundLeaves({ placements }: GroundLeavesProps) {
     [nodes],
   );
 
-  // Split placements per leaf shape and build each shape's base transforms
-  // + spatial-hash bucket index in one pass.
-  const perShape = useMemo<ShapeGroup[]>(() => {
-    const groups: ShapeGroup[] = LEAF_NODE_NAMES.map(() => ({
-      matrices: [],
-      buckets: new Map(),
-    }));
+  // Split placements into (shapeIndex x 4x4 spatial chunk) groups, each
+  // with its own base transforms + fine-grained disturbance bucket index,
+  // in one pass.
+  const renderGroups = useMemo<RenderGroup[]>(() => {
+    if (placements.length === 0) return [];
+
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minZ = Infinity;
+    let maxZ = -Infinity;
+    for (const p of placements) {
+      if (p.position[0] < minX) minX = p.position[0];
+      if (p.position[0] > maxX) maxX = p.position[0];
+      if (p.position[2] < minZ) minZ = p.position[2];
+      if (p.position[2] > maxZ) maxZ = p.position[2];
+    }
+    const chunkW = Math.max(maxX - minX, 1e-6) / CHUNK_GRID;
+    const chunkD = Math.max(maxZ - minZ, 1e-6) / CHUNK_GRID;
+
+    const groupMap = new Map<string, RenderGroup>();
 
     for (const p of placements) {
-      const shape = groups[p.shapeIndex % groups.length];
-      const localIdx = shape.matrices.length;
+      const shapeIndex = p.shapeIndex % LEAF_NODE_NAMES.length;
+      let cx = Math.floor((p.position[0] - minX) / chunkW);
+      let cz = Math.floor((p.position[2] - minZ) / chunkD);
+      if (cx >= CHUNK_GRID) cx = CHUNK_GRID - 1;
+      if (cz >= CHUNK_GRID) cz = CHUNK_GRID - 1;
+      const key = `${shapeIndex}:${cx},${cz}`;
 
+      let group = groupMap.get(key);
+      if (!group) {
+        group = { key, shapeIndex, matrices: [], buckets: new Map() };
+        groupMap.set(key, group);
+      }
+
+      const localIdx = group.matrices.length;
       const m = new THREE.Matrix4().compose(
         new THREE.Vector3(p.position[0], p.position[1], p.position[2]),
         new THREE.Quaternion().setFromEuler(
@@ -114,27 +144,27 @@ export default function GroundLeaves({ placements }: GroundLeavesProps) {
         ),
         new THREE.Vector3(LEAF_SCALE * p.scale, LEAF_SCALE * p.scale, LEAF_SCALE * p.scale),
       );
-      shape.matrices.push(m);
+      group.matrices.push(m);
 
       const bx = Math.floor(p.position[0] / BUCKET_SIZE);
       const bz = Math.floor(p.position[2] / BUCKET_SIZE);
-      const key = `${bx},${bz}`;
-      let bucket = shape.buckets.get(key);
+      const bucketKey = `${bx},${bz}`;
+      let bucket = group.buckets.get(bucketKey);
       if (!bucket) {
         bucket = [];
-        shape.buckets.set(key, bucket);
+        group.buckets.set(bucketKey, bucket);
       }
       bucket.push(localIdx);
     }
 
-    return groups;
+    return Array.from(groupMap.values());
   }, [placements]);
 
-  const meshRefs = useRef<(THREE.InstancedMesh | null)[]>([]);
-  const disturbedRefs = useRef<Map<number, DisturbedEntry>[]>(
-    LEAF_NODE_NAMES.map(() => new Map()),
-  );
+  const meshRefs = useRef<Map<string, THREE.InstancedMesh>>(new Map());
+  const disturbedRefs = useRef<Map<string, Map<number, DisturbedEntry>>>(new Map());
   const lastBucketKeyRef = useRef<string | null>(null);
+  const animatedMatrixTemp = useRef(new THREE.Matrix4()).current;
+  const finishedTemp = useRef<number[]>([]).current;
 
   useFrame((state) => {
     const px = PLAYER_WORLD_POS.x;
@@ -147,10 +177,15 @@ export default function GroundLeaves({ placements }: GroundLeavesProps) {
     const playerEnteredNewBucket = playerBucketKey !== lastBucketKeyRef.current;
     lastBucketKeyRef.current = playerBucketKey;
 
-    perShape.forEach((shape, shapeIdx) => {
-      const mesh = meshRefs.current[shapeIdx];
-      if (!mesh) return;
-      const disturbed = disturbedRefs.current[shapeIdx];
+    for (const group of renderGroups) {
+      const mesh = meshRefs.current.get(group.key);
+      if (!mesh) continue;
+
+      let disturbed = disturbedRefs.current.get(group.key);
+      if (!disturbed) {
+        disturbed = new Map();
+        disturbedRefs.current.set(group.key, disturbed);
+      }
       let touched = false;
 
       // Only scan the 3x3 bucket neighborhood around the player's current
@@ -159,12 +194,12 @@ export default function GroundLeaves({ placements }: GroundLeavesProps) {
       if (playerEnteredNewBucket && disturbed.size < MAX_CONCURRENT_DISTURBED) {
         for (let dx = -1; dx <= 1; dx++) {
           for (let dz = -1; dz <= 1; dz++) {
-            const candidates = shape.buckets.get(`${centerBX + dx},${centerBZ + dz}`);
+            const candidates = group.buckets.get(`${centerBX + dx},${centerBZ + dz}`);
             if (!candidates) continue;
             for (const localIdx of candidates) {
               if (disturbed.size >= MAX_CONCURRENT_DISTURBED) break;
               if (disturbed.has(localIdx)) continue;
-              const base = shape.matrices[localIdx];
+              const base = group.matrices[localIdx];
               const ddx = base.elements[12] - px;
               const ddz = base.elements[14] - pz;
               if (ddx * ddx + ddz * ddz <= BLOW_RADIUS_SQ) {
@@ -177,58 +212,58 @@ export default function GroundLeaves({ placements }: GroundLeavesProps) {
       }
 
       if (disturbed.size > 0) {
-        const finished: number[] = [];
+        finishedTemp.length = 0;
         disturbed.forEach((entry, localIdx) => {
-          const base = shape.matrices[localIdx];
+          const base = group.matrices[localIdx];
           const elapsed = time - entry.startTime;
 
           if (elapsed >= DISTURB_DURATION) {
             mesh.setMatrixAt(localIdx, base);
             mesh.instanceMatrix.addUpdateRange(localIdx * 16, 16);
-            finished.push(localIdx);
+            finishedTemp.push(localIdx);
             touched = true;
             return;
           }
 
-          // Quick kick outward/up, eased back down — reads as a footstep
-          // puff of disturbed litter rather than a global wind effect.
           const tNorm = elapsed / DISTURB_DURATION;
           const kick = Math.sin(tNorm * Math.PI) * (1 - tNorm * 0.3);
-          const animated = base.clone();
-          animated.elements[12] += entry.dirX * kick * 0.35;
-          animated.elements[13] += kick * 0.18;
-          animated.elements[14] += entry.dirZ * kick * 0.35;
-          mesh.setMatrixAt(localIdx, animated);
+          animatedMatrixTemp.copy(base);
+          animatedMatrixTemp.elements[12] += entry.dirX * kick * 0.35;
+          animatedMatrixTemp.elements[13] += kick * 0.18;
+          animatedMatrixTemp.elements[14] += entry.dirZ * kick * 0.35;
+          mesh.setMatrixAt(localIdx, animatedMatrixTemp);
           mesh.instanceMatrix.addUpdateRange(localIdx * 16, 16);
           touched = true;
         });
-        finished.forEach((idx) => disturbed.delete(idx));
+        finishedTemp.forEach((idx) => disturbed!.delete(idx));
       }
 
       if (touched) {
         mesh.instanceMatrix.needsUpdate = true;
       }
-    });
+    }
   });
 
-  if (leafSources.length === 0 || placements.length === 0) return null;
+  if (leafSources.length === 0 || renderGroups.length === 0) return null;
 
   return (
     <>
-      {perShape.map((shape, shapeIdx) => {
-        const source = leafSources[shapeIdx % leafSources.length];
-        if (!source || shape.matrices.length === 0) return null;
+      {renderGroups.map((group) => {
+        const source = leafSources[group.shapeIndex % leafSources.length];
+        if (!source) return null;
         return (
           <instancedMesh
-            key={shapeIdx}
-            args={[source.geometry, undefined, shape.matrices.length]}
+            key={group.key}
+            args={[source.geometry, undefined, group.matrices.length]}
             castShadow={false}
             receiveShadow={false}
-            frustumCulled={false}
             ref={(mesh) => {
-              meshRefs.current[shapeIdx] = mesh;
-              if (!mesh) return;
-              shape.matrices.forEach((m, i) => mesh.setMatrixAt(i, m));
+              if (!mesh) {
+                meshRefs.current.delete(group.key);
+                return;
+              }
+              meshRefs.current.set(group.key, mesh);
+              group.matrices.forEach((m, i) => mesh.setMatrixAt(i, m));
               mesh.instanceMatrix.needsUpdate = true;
             }}
           >
