@@ -51,7 +51,8 @@ export default defineConfig({
     emptyOutDir: true,
   },
   server: {
-        proxy: {
+    
+    proxy: {
       "/api": {
         target: "http://localhost:8080",
         changeOrigin: true,
