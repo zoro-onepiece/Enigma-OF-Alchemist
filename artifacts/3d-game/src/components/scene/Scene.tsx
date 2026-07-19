@@ -409,7 +409,7 @@ export default function Scene({
       <GameHUD
         health={playerHp}
         maxHealth={playerMaxHp}
-        score={score}
+        // score={score}
         arcanaCoins={useGameStore((s) => s.arcanaCoins)}
         essences={essences}
         walletAddress={walletAddress as never}
