@@ -1,5 +1,5 @@
 import { Suspense, useRef, useEffect, useMemo, useState } from "react";
-import { useGLTF, useAnimations, Html } from "@reactthree/drei";
+import { useGLTF, useAnimations, Html } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { PLAYER_WORLD_POS } from "./Player";
