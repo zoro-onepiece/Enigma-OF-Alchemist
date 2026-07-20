@@ -1,0 +1,10 @@
+{
+  "name": "Philosopher's Stone",
+  "description": "A fragment of forgotten power, conjured by recalling the temple's oldest runes in their true order. Legend holds it can turn base matter into gold — and base fear into resolve.",
+  "image": "/relics/1.png",
+  "attributes": [
+    { "trait_type": "Type", "value": "Alchemical Relic" },
+    { "trait_type": "Shrine", "value": "Rune Memory" },
+    { "trait_type": "Rarity", "value": "Legendary" }
+  ]
+}

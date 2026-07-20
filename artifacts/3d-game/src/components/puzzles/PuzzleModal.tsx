@@ -19,7 +19,7 @@ import RuneMemoryGame from "./RuneMemoryGame";
 import AlchemyMatch3Game from "./AlchemyMatch3Game";
 import ElementalSudoku from "./games/ElementalSudoku";
 import SigilPairsGame from "./SigilPairsGame";
-import { useGameStore } from "../../store/gameStore";
+import { useGameStore, PUZZLE_RELICS } from "../../store/gameStore";
 import { playVoiceLine, canTrigger, type VoiceLineName } from "../../audio/voice";
 
 // HP cost per lost mini-game attempt (10 losses = death at 100 max HP).
@@ -116,6 +116,7 @@ export default function PuzzleModal({
   const flavorText =
     ORDINAL_FLAVOR_TEXT[Math.min(solvedCountBefore, ORDINAL_FLAVOR_TEXT.length - 1)];
   const damagePlayer = useGameStore((s) => s.damagePlayer);
+  const relic = PUZZLE_RELICS[puzzleId];
 
   // Speak the ordinal encouragement line the instant this puzzle is won —
   // same solvedCountBefore index as the ORDINAL_FLAVOR_TEXT shown above,
@@ -190,9 +191,13 @@ export default function PuzzleModal({
           0% { transform: translateY(0) scale(1); opacity: 1; }
           100% { transform: translateY(-60px) scale(0.3); opacity: 0; }
         }
+        @keyframes nft-glow {
+          0%, 100% { filter: drop-shadow(0 0 15px rgba(234,179,8,0.6)); }
+          50% { filter: drop-shadow(0 0 35px rgba(234,179,8,1)); }
+        }
       `}</style>
 
-      <div className="relative w-full max-w-md lg:max-w-xl xl:max-w-2xl mx-3 sm:mx-4 rounded-2xl border-2 border-amber-700/60 bg-gradient-to-b from-stone-900 to-stone-950 p-4 sm:p-8 lg:p-10 xl:p-12 shadow-2xl shadow-black/60 font-serif max-h-[90vh] overflow-y-auto">
+      <div className="relative w-full max-w-md mx-3 sm:mx-4 rounded-2xl border-2 border-amber-700/60 bg-gradient-to-b from-stone-900 to-stone-950 p-4 sm:p-8 shadow-[0_0_50px_rgba(234,179,8,0.15)] font-serif max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-4 sm:mb-6 lg:mb-8">
           <div>
@@ -214,12 +219,13 @@ export default function PuzzleModal({
             style={{ animation: "victory-glow 1.6s ease-in-out infinite" }}
           >
             <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-xl">
-              {Array.from({ length: 10 }).map((_, i) => (
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_rgba(250,204,21,0.2)_0%,_transparent_70%)]" />
+              {Array.from({ length: 15 }).map((_, i) => (
                 <span
                   key={i}
                   className="absolute text-amber-300 text-sm lg:text-lg"
                   style={{
-                    left: `${10 + i * 8}%`,
+                    left: `${5 + i * 6}%`,
                     bottom: "20%",
                     animation: `victory-particle ${1.2 + (i % 4) * 0.3}s ease-out ${i * 0.08}s infinite`,
                   }}
@@ -228,12 +234,21 @@ export default function PuzzleModal({
                 </span>
               ))}
             </div>
-            <div className="relative text-5xl lg:text-7xl mb-4 lg:mb-6">✨</div>
-            <p className="relative text-amber-300 font-semibold text-lg lg:text-2xl xl:text-3xl mb-1">
-              Essence Conjured!
-            </p>
-            <p className="relative text-white/60 text-sm lg:text-base xl:text-lg italic mb-1">{config.name} solved</p>
-            <p className="relative text-emerald-300/90 text-sm lg:text-base xl:text-lg italic mb-6 lg:mb-8">{flavorText}</p>
+            {relic && (
+              <div className="relative flex flex-col items-center mb-6">
+                <img 
+                  src={relic.image} 
+                  alt={relic.name} 
+                  className="w-32 h-32 object-contain mb-3"
+                  style={{ animation: "nft-glow 2s ease-in-out infinite" }}
+                />
+                <p className="text-amber-300 font-bold text-xl tracking-wide mb-1 shadow-black drop-shadow-md">
+                  You earned this {relic.name}
+                </p>
+              </div>
+            )}
+            <p className="relative text-white/60 text-sm italic mb-1">{config.name} solved</p>
+            <p className="relative text-emerald-300/90 text-sm italic mb-6">{flavorText}</p>
             <button
               onClick={handleContinue}
               className="relative rounded-lg border border-emerald-600/70 bg-emerald-900/40 px-6 py-2 lg:px-10 lg:py-4 text-sm lg:text-lg font-semibold uppercase tracking-widest text-emerald-300 transition-colors hover:bg-emerald-900/60"

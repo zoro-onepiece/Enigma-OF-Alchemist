@@ -597,7 +597,7 @@ const AnimatedCharacter = forwardRef<AnimatedCharacterHandle, AnimatedCharacterP
     const activeAction = useRef<THREE.AnimationAction | null>(null);
 
     useEffect(() => {
-      console.log("🎬 Available animations for", modelPath, ":", Object.keys(actions));
+      // console.log("🎬 Available animations for", modelPath, ":", Object.keys(actions));
     }, [actions, modelPath]);
 
     const crossFadeTo = (name: string, duration = 0.25, once = false) => {

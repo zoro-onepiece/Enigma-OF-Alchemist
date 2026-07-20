@@ -1,0 +1,10 @@
+{
+  "name": "Mystic Hourglass",
+  "description": "Its sand fell in balance with all four elements at once. Those who carry it say time in the garden no longer feels like a countdown, but a companion.",
+  "image": "/relics/3.png",
+  "attributes": [
+    { "trait_type": "Type", "value": "Alchemical Relic" },
+    { "trait_type": "Shrine", "value": "Elemental Sudoku" },
+    { "trait_type": "Rarity", "value": "Legendary" }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "name": "Elixir of Life",
+  "description": "Distilled from ingredients aligned in perfect harmony at the alchemy table. A single drop mends what should have broken, and steadies what should have fallen.",
+  "image": "/relics/2.png",
+  "attributes": [
+    { "trait_type": "Type", "value": "Alchemical Relic" },
+    { "trait_type": "Shrine", "value": "Alchemy Match-3" },
+    { "trait_type": "Rarity", "value": "Legendary" }
+  ]
+}

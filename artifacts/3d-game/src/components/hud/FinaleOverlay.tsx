@@ -80,9 +80,16 @@ export default function FinaleOverlay({
       </div>
 
       <div className="relative mx-4 max-w-lg rounded-2xl border-2 border-amber-400/70 bg-gradient-to-b from-stone-900 to-emerald-950 p-5 text-center shadow-[0_0_60px_rgba(251,191,36,0.35)] sm:p-8">
-        <div className="mb-2 text-4xl sm:mb-3 sm:text-5xl">🏆</div>
+        <div className="mb-6 flex justify-center">
+          <img 
+            src="/relics/key.png" 
+            alt="Master Key" 
+            className="h-32 w-32 object-contain"
+            style={{ animation: "key-glow 2s ease-in-out infinite" }}
+          />
+        </div>
         <h1 className="mb-2 text-lg font-bold tracking-wide text-amber-200 sm:text-xl">
-          The Enigma is Solved!
+          The Master Key is Yours
         </h1>
         <p className="mb-4 text-xs text-amber-100/80 sm:mb-6 sm:text-sm">All Essences United</p>
 
@@ -91,14 +98,13 @@ export default function FinaleOverlay({
           style={{ animation: "finale-reveal-fade 1.4s ease-out" }}
         >
           <p>
-            The shrines never sought a stranger. They sought an heir.
+            The scattered elements have been restored to harmony, forging the ultimate relic.
           </p>
           <p>
-            As the final seal breaks, the island remembers what it always knew —{" "}
-            <span className="font-semibold text-amber-300">you are her.</span>
+            With this radiant <span className="font-semibold text-amber-300">Master Key</span>, the path to the ancient vault lies open.
           </p>
           <p className="font-semibold text-amber-200">
-            The Legendary Alchemist has returned, and the garden is yours once more.
+            The Legendary Alchemist has returned, and the ultimate Treasure Chest awaits your command.
           </p>
         </div>
 
@@ -143,6 +149,10 @@ export default function FinaleOverlay({
         @keyframes finale-reveal-fade {
           0% { opacity: 0; transform: translateY(10px); }
           100% { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes key-glow {
+          0%, 100% { filter: drop-shadow(0 0 20px rgba(234,179,8,0.7)); transform: scale(1); }
+          50% { filter: drop-shadow(0 0 45px rgba(250,204,21,1)); transform: scale(1.05); }
         }
       `}</style>
     </div>

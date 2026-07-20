@@ -98,24 +98,21 @@ export default function SigilPairsGame({ onWin, onLose }: SigilPairsGameProps) {
 
       if (first.symbol === second.symbol) {
         playMatch();
+        const willWin = cards.filter(c => c.matched).length === cards.length - 2;
+        
         setTimeout(() => {
           setCards((prev) =>
             prev.map((c) => (c.id === firstId || c.id === secondId ? { ...c, matched: true } : c)),
           );
           setFlippedIds([]);
           setBusy(false);
-          setCards((prev) => {
-            const allMatched = prev.every(
-              (c) => c.matched || c.id === firstId || c.id === secondId,
-            );
-            if (allMatched) {
-              setTimeout(() => {
-                playWin();
-                onWin();
-              }, 200);
-            }
-            return prev;
-          });
+          
+          if (willWin) {
+            setTimeout(() => {
+              playWin();
+              onWin();
+            }, 200);
+          }
         }, 350);
       } else {
         playWrong();

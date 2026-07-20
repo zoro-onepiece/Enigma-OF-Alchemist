@@ -6,17 +6,20 @@
  * solve a puzzle.
  *
  * Env vars required (server-side only — never expose to client):
- *   OPENFORT_SECRET_KEY        — from https://dashboard.openfort.io
- *   OPENFORT_WALLET_SECRET     — base64 EC P-256 key, required to sign backend-wallet ops
+ *   OPENFORT_SECRET_KEY         — from https://dashboard.openfort.io
+ *   OPENFORT_WALLET_SECRET      — base64 EC P-256 key, required to sign backend-wallet ops
  *   OPENFORT_BACKEND_ACCOUNT_ID — acc_... of the backend wallet that owns EnigmaRelics
  *   OPENFORT_FEE_SPONSORSHIP_ID — pol_... fee sponsorship (omit to auto-discover)
- *   RELICS_CONTRACT_ADDRESS    — EnigmaRelics deployment on Arbitrum Sepolia
+ *   RELICS_CONTRACT_ADDRESS     — EnigmaRelics deployment on Arbitrum Sepolia
  *
  * TODO:
  *   - Verify the Magic DID token from the Authorization header instead of
- *     trusting `playerAddress` from the request body
- *   - Verify puzzleId was actually solved by this player (via /api/puzzle/verify's
- *     record, not re-derived here) before minting
+ *     trusting `playerAddress` from the request body (needs @magic-sdk/admin)
+ *   - Verify puzzleId was actually solved by this player before minting —
+ *     the puzzle mini-games run entirely client-side (PuzzleModal.tsx), so
+ *     there is currently no server-side record to check against; the older
+ *     /api/puzzle/verify route tracks a different, disconnected puzzle-id
+ *     scheme and isn't wired to the live client puzzles
  *   - Idempotency: store (puzzleId, playerAddress) so a retry can't double-mint
  */
 import { Router, Request, Response } from "express";
@@ -63,7 +66,7 @@ router.post("/", async (req: Request, res: Response) => {
     const iface = new ethers.Interface(RELICS_ABI);
     const calldata = iface.encodeFunctionData("mintPuzzleReward", [playerAddress, tokenURI]);
 
-    req.log.info({ puzzleId, playerAddress }, "Sponsoring mintPuzzleReward via Openfort");
+    req.log.info({ puzzleId, playerAddress, tokenURI }, "Sponsoring mintPuzzleReward via Openfort");
 
     const result = await openfort.accounts.evm.backend.sendTransaction({
       account,

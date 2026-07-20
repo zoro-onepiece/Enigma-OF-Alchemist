@@ -19,9 +19,12 @@ import FinaleOverlay from "../hud/FinaleOverlay";
 import MobileControls from "../hud/MobileControls";
 import MinimapOverlay from "../hud/MinimapOverlay";
 import PuzzleModal from "../puzzles/PuzzleModal";
+import MerchantShop from "../hud/MerchantShop";
+import LockerModal from "../hud/LockerModal";
+// import SprintBreathSound from "../story/SprintBreathSound";
 import SprintFootstepSound from "../story/SprintFootstepSound";
 import IdleReminder from "../story/IdleReminder";
-import ShopInventoryModal from "../hud/ShopInventoryModal";
+// import ShopInventoryModal from "../hud/ShopInventoryModal";
 // import SprintBreathSound from "../story/SprintBreathSound";
 import GameOverOverlay from "../story/GameOverOverlay";
 import { useGameStore } from "../../store/gameStore";
@@ -151,8 +154,12 @@ export default function Scene({
   const activePuzzleId = useGameStore((s) => s.puzzle.activeId);
   const closePuzzle = useGameStore((s) => s.closePuzzle);
   const solvePuzzle = useGameStore((s) => s.solvePuzzle);
+  const mintPuzzleReward = useGameStore((s) => s.mintPuzzleReward);
   const inventoryOpen = useGameStore((s) => s.inventoryOpen);
+  const openInventory = useGameStore((s) => s.openInventory);
   const closeInventory = useGameStore((s) => s.closeInventory);
+  const shopOpen = useGameStore((s) => s.shopOpen);
+  const closeShop = useGameStore((s) => s.closeShop);
   const finaleClaimed = useGameStore((s) => s.finaleClaimed);
   const [finaleOverlayDismissed, setFinaleOverlayDismissed] = useState(false);
 
@@ -207,6 +214,26 @@ export default function Scene({
       window.removeEventListener("keydown", handler, { capture: true });
   }, []);
 
+  // Locker toggle — desktop "I" key (mirrors the "M" map toggle above,
+  // same capture-phase reasoning) or GameHUD's locker icon (both/mobile).
+  // Reads fresh state via getState() rather than closing over
+  // inventoryOpen/gamePhase, so this effect can register once with an
+  // empty dependency array (same pattern GlowingPuzzle.tsx uses for its
+  // shared "E" listener).
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== "i") return;
+      const { phase, inventoryOpen: isOpen, openInventory: open, closeInventory: close } =
+        useGameStore.getState();
+      if (phase === "dead" || phase === "puzzle" || phase === "shop") return;
+      if (isOpen) close();
+      else open();
+    };
+    window.addEventListener("keydown", handler, { capture: true });
+    return () =>
+      window.removeEventListener("keydown", handler, { capture: true });
+  }, []);
+
   // Task B: on-screen joystick + action button replace the keyboard hint
   // strip on touch/narrow-viewport devices.
   const showTouchControls = useShowTouchControls();
@@ -221,6 +248,19 @@ export default function Scene({
     playVoiceLine("tryagain_line", "Let's try that again, shall we?", {
       priority: true,
     });
+  };
+
+  // Locker toggle shared by the "I" key effect above and GameHUD's icon.
+  const toggleLocker = () => (inventoryOpen ? closeInventory() : openInventory());
+
+  // Puzzle solved: award score/mark solved (existing behavior, untouched)
+  // AND mint the matching relic NFT (see gameStore.mintPuzzleReward /
+  // PUZZLE_RELICS). Minting is best-effort — a failed mint is logged by the
+  // store action, never thrown, so it can't block the victory UI which
+  // solvePuzzle() already drives.
+  const handlePuzzleSolved = (puzzleId: string) => {
+    solvePuzzle(puzzleId);
+    void mintPuzzleReward(puzzleId, walletAddress ?? null);
   };
 
   // Arm the "start music after first interaction" listener once.
@@ -478,11 +518,14 @@ export default function Scene({
         health={playerHp}
         maxHealth={playerMaxHp}
         score={score}
+        arcanaCoins={useGameStore((s) => s.arcanaCoins)}
         essences={essences}
         walletAddress={walletAddress as never}
         onConnectWallet={onConnectWallet}
         mapOpen={mapOpen}
         onToggleMap={toggleMap}
+        lockerOpen={inventoryOpen}
+        onToggleLocker={toggleLocker}
         mobileControlsActive={showTouchControls}
       />
 
@@ -524,15 +567,21 @@ export default function Scene({
         <PuzzleModal
           puzzleId={activePuzzleId}
           onClose={closePuzzle}
-          onSolved={solvePuzzle}
+          onSolved={handlePuzzleSolved}
           solvedCountBefore={essences}
         />
       )}
 
-      {/* ── Merchant shop/inventory modal — opened by Merchant.tsx's "Press E
-          to Trade" prompt when the player is nearby. ──────────────────────── */}
+      {/* ── Merchant shop — opened only by Merchant.tsx's "Press E to Trade"
+          prompt when the player is nearby. ─────────────────────────────── */}
+      {gamePhase === "shop" && shopOpen && (
+        <MerchantShop playerAddress={walletAddress} onClose={closeShop} />
+      )}
+
+      {/* ── Locker/Inventory — standalone, toggled by "I" (desktop) or
+          GameHUD's locker icon (both/mobile), independent of the Merchant. */}
       {gamePhase === "inventory" && inventoryOpen && (
-        <ShopInventoryModal playerAddress={walletAddress} onClose={closeInventory} />
+        <LockerModal onClose={closeInventory} />
       )}
 
       {/* ── Controls hint overlay — desktop-only; touch devices get the
@@ -546,6 +595,7 @@ export default function Scene({
             { keys: "D / →", label: "Strafe R" },
             { keys: "Mouse", label: "Look Around" },
             { keys: "M", label: "Map" },
+            { keys: "I", label: "Locker" },
           ].map(({ keys, label }) => (
             <div key={label} className="flex flex-col items-center gap-0.5">
               <kbd className="bg-white/10 border border-white/20 rounded px-2 py-0.5 text-[10px] font-mono text-purple-300">
