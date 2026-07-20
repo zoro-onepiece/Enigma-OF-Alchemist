@@ -21,7 +21,8 @@ import { registerBlocker } from "../../../lib/worldCollision";
 // without duplicating the axis-fix/bounds math for a second use case.
 export const FOREST_TREE_MODEL_PATH = "/models/forest_tree_pack.glb";
 export const FOREST_TREE_AXIS_FIX_ROTATION: [number, number, number] = [-Math.PI / 2, 0, 0];
-export const FOREST_TREE_TARGET_BASE_HEIGHT = 1.74;
+// Raised 1.74 -> 2.436 (+40%) per explicit size-increase request.
+export const FOREST_TREE_TARGET_BASE_HEIGHT = 2.436;
 export const FOREST_TRUNK_NODES = [
   "Tree_Trunk_01_Tree_Trunk_01_0",
   "Tree_Trunk_01.001_Tree_Trunk_01_0",
@@ -67,10 +68,10 @@ const AXIS_FIX_ROTATION = FOREST_TREE_AXIS_FIX_ROTATION;
 // exactly on the ground for every variant regardless of its native size.
 const VARIANT_BOUNDS = FOREST_VARIANT_BOUNDS;
 
-// Target height (in world units) for an instance at scale=1, chosen so the
-// full 1.1–1.8 instance scale range in GameEnvironment.tsx lands at ~3–5x
-// the character's on-screen height (rawHeight * PLAYER_SCALE ≈ 1.58 * 0.4
-// ≈ 0.63): 1.74 * 1.1 ≈ 3.0x, 1.74 * 1.8 ≈ 5.0x.
+// Target height (in world units) for an instance at scale=1. Base value was
+// 1.74 (chosen so the full 1.1-1.8 instance scale range in
+// GameEnvironment.tsx landed at ~3-5x the character's on-screen height);
+// raised by +40% to 2.436 per explicit size-increase request.
 const TARGET_BASE_HEIGHT = FOREST_TREE_TARGET_BASE_HEIGHT;
 
 export interface GlbForestTreeProps {

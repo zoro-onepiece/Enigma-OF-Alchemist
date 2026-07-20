@@ -445,7 +445,8 @@
 //     </Suspense>
 //   );
 // }
-import { Suspense, useRef, useEffect, useState, useMemo, forwardRef, useImperativeHandle } from "react";
+import { Suspense, useRef, useEffect, useLayoutEffect, useState, useMemo, forwardRef, useImperativeHandle } from "react";
+
 import { useGLTF, useAnimations, useKeyboardControls } from "@react-three/drei";
 import { useFrame, useThree, createPortal } from "@react-three/fiber";
 import * as THREE from "three";
@@ -554,6 +555,11 @@ const _desiredCamPos = new THREE.Vector3();
 
 export interface AnimatedCharacterHandle {
   crossFadeTo: (name: string, duration?: number, once?: boolean) => void;
+  // Backs PlayerModel's T-pose gate (see its useFrame below) — PlayerModel
+  // has no local `actions` of its own (that lives in AnimatedCharacter,
+  // scoped to whichever skin is currently mounted), so it needs to ask
+  // through the ref rather than reading a mixer it doesn't own.
+  isAnimationRunning: () => boolean;
 }
 
 interface AnimatedCharacterProps {
@@ -616,7 +622,14 @@ const AnimatedCharacter = forwardRef<AnimatedCharacterHandle, AnimatedCharacterP
       activeAction.current = next;
     };
 
-    useImperativeHandle(ref, () => ({ crossFadeTo }), [actions]);
+    useImperativeHandle(
+      ref,
+      () => ({
+        crossFadeTo,
+        isAnimationRunning: () => Object.values(actions).some((a) => a?.isRunning()),
+      }),
+      [actions],
+    );
 
     useEffect(() => {
       // Fresh mixer every mount (see class doc above) — always a plain
@@ -811,6 +824,19 @@ function PlayerModel() {
 
   const [isGunEquipped, setIsGunEquipped] = useState(false);
 
+  // ─── Bulletproof T-pose gate ────────────────────────────────────────────
+  // Two prior fixes (fadeIn->setEffectiveWeight, useEffect->useLayoutEffect)
+  // targeted the exact timing of WHEN an action starts, and neither held up
+  // in the browser. This abandons timing entirely: the model stays
+  // invisible no matter what until an actual THREE.AnimationAction reports
+  // isRunning() === true (checked fresh every frame, not assumed from
+  // having called .play()) — so there is structurally no frame in which a
+  // T-pose can ever be drawn, regardless of any mount/effect/GLTF-load race
+  // that does or doesn't exist. Flips exactly once, then never checks again.
+  const [modelVisible, setModelVisible] = useState(false);
+  const tposeGateConfirmed = useRef(false);
+  const tposeGateFrame = useRef(0);
+
   const [subscribeKeys, getKeys] = useKeyboardControls<PlayerControl>();
 
   const yaw = useRef(Math.PI);
@@ -908,6 +934,23 @@ function PlayerModel() {
   useFrame((_state, delta) => {
     const g = group.current;
     if (!g) return;
+
+    if (!tposeGateConfirmed.current) {
+      tposeGateFrame.current += 1;
+      // PlayerModel has no local `actions` — the real AnimationMixer/
+      // actions live inside AnimatedCharacter (see its doc comment: it
+      // owns the model-swap-sensitive mixer, remounted fresh per skin),
+      // exposed back here only through animRef's isAnimationRunning().
+      const anyRunning = animRef.current?.isAnimationRunning() ?? false;
+      if (tposeGateFrame.current <= 30) {
+        // eslint-disable-next-line no-console
+        console.log("🎬 T-POSE GATE:", anyRunning, "frame:", tposeGateFrame.current);
+      }
+      if (anyRunning) {
+        tposeGateConfirmed.current = true;
+        setModelVisible(true);
+      }
+    }
 
     const camLerp = 1 - Math.exp(-CAM_SMOOTH_RATE * delta);
     yaw.current += (targetYaw.current - yaw.current) * camLerp;
@@ -1007,6 +1050,7 @@ function PlayerModel() {
       ref={group}
       position={PLAYER_SPAWN}
       scale={PLAYER_SCALE}
+      visible={modelVisible}
       dispose={null}
     >
       {/* Suspense scoped to JUST the mesh/animation-binding piece — see

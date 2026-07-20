@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Canvas } from "@react-three/fiber";
 import {
   Environment,
@@ -15,7 +15,6 @@ import Player, { playerKeyboardMap, teleportPlayerToSpawn } from "../3d/Player";
 import SprintLeaves from "../3d/SprintLeaves";
 import Merchant from "../3d/Merchant"; // <--- YAHAN IMPORT ADD KAREIN
 import GameHUD from "../hud/GameHUD";
-import AudioMuteToggle from "../hud/AudioMuteToggle";
 import FinaleOverlay from "../hud/FinaleOverlay";
 import MobileControls from "../hud/MobileControls";
 import MinimapOverlay from "../hud/MinimapOverlay";
@@ -39,6 +38,41 @@ import { useShowTouchControls } from "../../hooks/use-mobile";
 // Lighting.tsx's SUN_POSITION export) kept visually consistent with the sun
 // direction so the directional shadow light matches what <Sky> renders.
 const SKY_COLOR = "#87ceeb";
+
+// ─── Cloud puff texture ─────────────────────────────────────────────────
+// drei's <Clouds> defaults to loading its puff texture from an external
+// CDN (rawcdn.githack.com/pmndrs/drei-assets/.../cloud.png) — confirmed via
+// a direct request that this URL now returns HTTP 403 Forbidden. Clouds
+// were still correctly positioned/instanced, just invisible: no texture,
+// no alpha shape, nothing to see. Generated locally instead (a soft radial
+// gradient, same procedural-canvas-texture technique SprintAura.tsx uses
+// for its glow sprite) so cloud rendering has no external network
+// dependency at all — cached at module scope, built once.
+let cloudTextureDataUrl: string | null = null;
+function getCloudTextureDataUrl(): string {
+  if (cloudTextureDataUrl) return cloudTextureDataUrl;
+  const size = 256;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d")!;
+  const gradient = ctx.createRadialGradient(
+    size / 2,
+    size / 2,
+    0,
+    size / 2,
+    size / 2,
+    size / 2,
+  );
+  gradient.addColorStop(0, "rgba(255,255,255,1)");
+  gradient.addColorStop(0.4, "rgba(255,255,255,0.85)");
+  gradient.addColorStop(0.75, "rgba(255,255,255,0.35)");
+  gradient.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, size, size);
+  cloudTextureDataUrl = canvas.toDataURL("image/png");
+  return cloudTextureDataUrl;
+}
 
 // ─── WebGL capability check ───────────────────────────────────────────────────
 function isWebGLAvailable(): boolean {
@@ -129,6 +163,29 @@ export default function Scene({
   const finaleClaimed = useGameStore((s) => s.finaleClaimed);
   const [finaleOverlayDismissed, setFinaleOverlayDismissed] = useState(false);
 
+  // Emergency GPU-stability pass: staggered mount waterfall, following a
+  // confirmed WebGL context loss in the browser console. Previously every
+  // GLB in the world (trees, leaves, flowers, butterflies, clouds,
+  // merchant) mounted simultaneously the instant Scene became visible —
+  // all their texture uploads hitting the GPU in the same frame or two.
+  // Player + the procedural ground/pathway/temple/puzzles (no GLB) mount
+  // immediately (mountStage 0); trees mount at +500ms (mountStage 1);
+  // the remaining decorative GLB layers — leaves/flowers/butterflies/
+  // DistantScenery via GameEnvironment's mountDecor prop, plus clouds and
+  // the merchant, both owned directly here — mount at +1000ms (mountStage
+  // 2). Two independent timers (not chained) scheduled together on mount;
+  // both are cleared on unmount so a fast page-away doesn't fire a
+  // setState on an unmounted component.
+  const [mountStage, setMountStage] = useState(0);
+  useEffect(() => {
+    const t1 = window.setTimeout(() => setMountStage(1), 500);
+    const t2 = window.setTimeout(() => setMountStage(2), 1000);
+    return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+    };
+  }, []);
+
   // Task D: puzzle-location map — desktop toggles with "M", mobile taps the
   // icon button GameHUD renders (both drive this same bit of state, so
   // there's exactly one toggle path regardless of input device).
@@ -137,6 +194,10 @@ export default function Scene({
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key.toLowerCase() === "m") toggleMap();
+      // ESC only ever closes the map (never opens it) — a functional update
+      // so this doesn't need `mapOpen` in the effect's deps (which would
+      // mean tearing the listener down/back up on every toggle).
+      if (e.key === "Escape") setMapOpen((open) => (open ? false : open));
     };
     // Capture phase, not bubble — PuzzleModal.tsx's root div deliberately
     // calls onKeyDown={(e) => e.stopPropagation()} on every keypress while a
@@ -247,6 +308,8 @@ export default function Scene({
     walletAddressProp !== undefined ? walletAddressProp : internalWalletAddress;
   const onConnectWallet = onConnectWalletProp ?? handleConnectWallet;
 
+  const cloudTexture = useMemo(() => getCloudTextureDataUrl(), []);
+
   if (!isWebGLAvailable()) {
     return <WebGLFallback />;
   }
@@ -261,11 +324,46 @@ export default function Scene({
           "before" Player.tsx in the data flow. */}
       <KeyboardControls map={gamePhase === "dead" ? [] : playerKeyboardMap}>
         <Canvas
-          shadows
+          // Emergency GPU-stability pass: shadows forced off unconditionally
+          // (confirmed WebGL context loss in browser console — the driver
+          // is terminating the context under GPU load). When `shadows` is
+          // false, three.js's renderer skips its entire shadow-map render
+          // pass at the top of the frame loop (WebGLShadowMap.render() is
+          // gated on `shadowMap.enabled`, which this prop controls) — no
+          // shadow-camera passes, no shadow texture allocation/updates at
+          // all, regardless of how many meshes still have castShadow/
+          // receiveShadow=true. Those per-mesh flags become fully inert
+          // once this is false; leaving them in place costs nothing at
+          // runtime, so they're deliberately NOT being stripped from the
+          // ~22 files that set them — that would be a large, mechanical,
+          // purely-cosmetic diff with zero effect on the actual GPU load
+          // this fix addresses.
+          shadows={false}
           dpr={[1, 1.5]}
           camera={{ position: [0, 3, 8], fov: 50, near: 0.1, far: 500 }}
           gl={{ antialias: true, alpha: false }}
           style={{ background: "#0a0a18" }}
+          onCreated={({ gl }) => {
+            // Doesn't prevent context loss (that's what the other fixes in
+            // this pass are for) — this only stops it from being a
+            // PERMANENT white screen. preventDefault() on the lost event
+            // tells the browser to attempt automatic restoration instead
+            // of leaving the context dead; a full reload on restore is the
+            // pragmatic recovery since resuming a lost WebGL context
+            // in-place while preserving all of R3F's internal GPU-resource
+            // state correctly is fragile enough not to trust for a clean
+            // recovery.
+            gl.domElement.addEventListener("webglcontextlost", (e) => {
+              e.preventDefault();
+              // eslint-disable-next-line no-console
+              console.error("WebGL context lost — attempting restore");
+            });
+            gl.domElement.addEventListener("webglcontextrestored", () => {
+              // eslint-disable-next-line no-console
+              console.log("WebGL context restored");
+              window.location.reload();
+            });
+          }}
         >
           {showStats && <Stats />}
           {/* ── Lighting ──────────────────────────────────────────────────── */}
@@ -286,11 +384,25 @@ export default function Scene({
             mieDirectionalG={0.7}
           />
           <Environment preset="park" background={false} />
-          {/* limit raised from 40 to 90 alongside the cloud count below —
-              drei's <Clouds> shares this instance budget across every
-              <Cloud> child, so more clouds need more headroom or the later
-              ones would visibly thin out. */}
-          <Clouds material={THREE.MeshBasicMaterial} limit={90} range={60}>
+          {/* Emergency GPU-stability pass: cut 17 -> 8 clouds, limit
+              170 -> 60 (confirmed WebGL context loss in browser console —
+              each drei <Cloud> renders multiple overlapping planes, and
+              <Clouds> shares one instance budget across every child, so
+              both the per-cloud plane count AND the shared ceiling needed
+              to come down together). texture={cloudTexture}: see
+              getCloudTextureDataUrl() above — drei's default external CDN
+              texture 403s, which was the actual reason clouds were
+              invisible in an earlier, unrelated investigation. Also part
+              of the mountStage>=2 stagger below — clouds are a visual
+              luxury, no reason for them to compete with player/ground/
+              trees for the first second's GPU upload budget. */}
+          {mountStage >= 2 && (
+          <Clouds
+            material={THREE.MeshBasicMaterial}
+            texture={cloudTexture}
+            limit={60}
+            range={60}
+          >
             <Cloud
               seed={1}
               position={[-30, 55, -40]}
@@ -359,15 +471,8 @@ export default function Scene({
               opacity={0.5}
               speed={0.065}
             />
-            <Cloud
-              seed={77}
-              position={[5, 90, -10]}
-              bounds={[36, 7, 36]}
-              volume={17}
-              opacity={0.6}
-              speed={0.05}
-            />
           </Clouds>
+          )}
           {/* Explicit background + fog so the horizon blends seamlessly with
             the sky at any zoom/camera distance — no white gaps beyond the
             ground plane or Sky dome. GameEnvironment.tsx intentionally does
@@ -383,12 +488,15 @@ export default function Scene({
             args={[SKY_COLOR, 60 * ISLAND_SCALE, 300 * ISLAND_SCALE]}
           />
           {/* ── Code-generated Japanese temple garden environment ────────────
-            Ground, pathway, temple, trees, and puzzle props — see
-            GameEnvironment.tsx and its environment/ subcomponents. No GLB
-            models are loaded here. */}
-          <GameEnvironment />
-          {/* ── Merchant ──────────────────────────────────────────────────── */}
-          <Merchant /> 
+            Ground/pathway/temple/puzzles are procedural (no GLB, always
+            render). Trees and decorative GLB layers (leaves/flowers/
+            butterflies/DistantScenery) are gated by mountStage — see
+            GameEnvironment.tsx's mountTrees/mountDecor props and the
+            mountStage stagger effect above. ──────────────────────────── */}
+          <GameEnvironment mountTrees={mountStage >= 1} mountDecor={mountStage >= 2} />
+          {/* ── Merchant — part of the mountStage>=2 stagger, same
+              reasoning as clouds/decor above. ──────────────────────────── */}
+          {mountStage >= 2 && <Merchant />}
           {/* --- YAHAN MERCHANT ADD KAREIN */}
           {/* ── Player ────────────────────────────────────────────────────── */}
           <Player />
@@ -420,11 +528,6 @@ export default function Scene({
         onToggleLocker={toggleLocker}
         mobileControlsActive={showTouchControls}
       />
-
-      {/* ── Standalone audio mute toggle — separate component from GameHUD
-          per the "don't touch GameHUD internals" rule, shares the same
-          global mute flag as GameHUD's own speaker button. ─────────────── */}
-      <AudioMuteToggle />
 
       {/* ── Dialogue subtitles — shows whatever line voice.ts is currently
           speaking (intro narration + in-game guidance triggers below). ──── */}

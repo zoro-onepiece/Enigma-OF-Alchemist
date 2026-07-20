@@ -52,7 +52,8 @@ const VARIANT_BOUNDS: { height: number; baseOffset: number }[] = [
 
 // Same character-relative target height convention as GlbForestTree, so
 // both packs read at a consistent scale when scattered together.
-const TARGET_BASE_HEIGHT = 1.74;
+// Raised 1.74 -> 2.436 (+40%) per explicit size-increase request.
+const TARGET_BASE_HEIGHT = 2.436;
 
 const TRUNK_RADIUS = 0.35;
 

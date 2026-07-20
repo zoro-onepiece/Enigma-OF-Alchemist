@@ -76,8 +76,21 @@ export default function JapaneseTemple({
     // ── Emissive glow ramp ─────────────────────────────────────────────
     const target = glowActive ? GLOW_INTENSITY_TARGET : 0;
     const lerp = 1 - Math.exp(-GLOW_LERP_RATE * delta);
-    const mats = [platformMatRef.current, floorMatRef.current, ...pillarMatRefs.current];
-    for (const mat of mats) {
+    // Performance pass: was `const mats = [platformMatRef.current,
+    // floorMatRef.current, ...pillarMatRefs.current]` — a new array
+    // allocated every single frame, unconditionally, just to iterate 5
+    // stable refs. The refs themselves don't change after mount, so
+    // there's nothing to combine into an array for in the first place —
+    // applying the same update to each ref directly needs no allocation.
+    if (platformMatRef.current) {
+      const mat = platformMatRef.current;
+      mat.emissiveIntensity += (target - mat.emissiveIntensity) * lerp;
+    }
+    if (floorMatRef.current) {
+      const mat = floorMatRef.current;
+      mat.emissiveIntensity += (target - mat.emissiveIntensity) * lerp;
+    }
+    for (const mat of pillarMatRefs.current) {
       if (!mat) continue;
       mat.emissiveIntensity += (target - mat.emissiveIntensity) * lerp;
     }

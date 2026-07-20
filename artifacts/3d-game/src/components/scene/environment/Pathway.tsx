@@ -6,9 +6,22 @@ import * as THREE from "three";
  *
  * A winding stone path made of individual flat "stepping stone" cylinders
  * placed along a THREE.CatmullRomCurve3 through the given [x, z] waypoints.
- * Stones sit flush with y=0 (the walkable ground level Player.tsx expects)
- * with only a hair of thickness above it, so they read as flagstones, not
- * obstacles.
+ *
+ * Y-alignment: Player.tsx's ground clamp (`GROUND_Y = 0`) holds the
+ * character's feet rigidly at world y=0 — there's no step-up/terrain-
+ * following, she can only ever stand exactly at y=0. The stones must
+ * therefore have their walkable TOP surface at y=0 too, or her (fixed)
+ * feet visibly sink into / clip through whatever sticks up above that.
+ * Previously the cylinder was positioned with its BOTTOM at y=0
+ * (position.y = STONE_HEIGHT/2, i.e. centered so the disc spans
+ * y:[0, STONE_HEIGHT]) — its top surface sat a full 0.08 world units
+ * (~12% of the character's ~0.68-unit rendered height) above where her
+ * feet actually are, so she read as wading knee-deep through each stone
+ * rather than standing on it. Fixed by flipping which face sits at y=0:
+ * the disc's TOP now sits at STONE_SURFACE_Y (a small hair above y=0,
+ * enough to avoid z-fighting with the ground plane also at y=0, but far
+ * below the old 0.08 mismatch), with the rest of the cylinder buried
+ * below grade (invisible, doesn't matter).
  */
 export interface PathwayProps {
   waypoints: [number, number][];
@@ -17,6 +30,10 @@ export interface PathwayProps {
 
 const STONE_RADIUS = 0.55;
 const STONE_HEIGHT = 0.08;
+// How far the stone's top surface sits above y=0 (the ground plane AND the
+// character's fixed foot height) — just enough to read as a flagstone
+// without reintroducing the old walk-through-it mismatch.
+const STONE_SURFACE_Y = 0.02;
 
 export default function Pathway({ waypoints, stoneCount = 24 }: PathwayProps) {
   const stonePositions = useMemo(() => {
@@ -38,7 +55,7 @@ export default function Pathway({ waypoints, stoneCount = 24 }: PathwayProps) {
         return (
           <mesh
             key={i}
-            position={[p.x, STONE_HEIGHT / 2, p.z]}
+            position={[p.x, STONE_SURFACE_Y - STONE_HEIGHT / 2, p.z]}
             rotation={[0, rot, 0]}
             scale={[scaleVariance, 1, scaleVariance]}
             receiveShadow

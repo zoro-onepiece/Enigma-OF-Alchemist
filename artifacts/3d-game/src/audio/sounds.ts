@@ -104,19 +104,25 @@ let hasInteracted = false;
 let interactionGateArmed = false;
 let pendingAfterInteraction: Array<() => void> = [];
 
+function flushInteractionGate(): void {
+  if (hasInteracted) return;
+  hasInteracted = true;
+  window.removeEventListener("pointerdown", gestureListener);
+  window.removeEventListener("keydown", gestureListener);
+  const queued = pendingAfterInteraction;
+  pendingAfterInteraction = [];
+  queued.forEach((cb) => cb());
+}
+
+function gestureListener(): void {
+  flushInteractionGate();
+}
+
 function armInteractionGate(): void {
   if (interactionGateArmed) return;
   interactionGateArmed = true;
-  const handler = () => {
-    hasInteracted = true;
-    window.removeEventListener("pointerdown", handler);
-    window.removeEventListener("keydown", handler);
-    const queued = pendingAfterInteraction;
-    pendingAfterInteraction = [];
-    queued.forEach((cb) => cb());
-  };
-  window.addEventListener("pointerdown", handler);
-  window.addEventListener("keydown", handler);
+  window.addEventListener("pointerdown", gestureListener);
+  window.addEventListener("keydown", gestureListener);
 }
 
 function runAfterInteraction(cb: () => void): void {
@@ -126,6 +132,16 @@ function runAfterInteraction(cb: () => void): void {
   }
   pendingAfterInteraction.push(cb);
   armInteractionGate();
+}
+
+/** Same fix, same root cause as voice.ts's markUserInteracted() (see its
+ * doc comment) — this module keeps a fully separate gesture-gate instance,
+ * so it needs its own explicit confirmation call too. Call synchronously
+ * inside a real login click handler. */
+export function markUserInteracted(): void {
+  // eslint-disable-next-line no-console
+  console.log("🔊 markUserInteracted CALLED at", Date.now());
+  flushInteractionGate();
 }
 
 // ─── Fade helper (shared by music + breath) ────────────────────────────────
@@ -173,7 +189,51 @@ let musicWanted = false;
 // promise makes the second call await and reuse the first call's result
 // instead of racing it.
 let musicLoading: Promise<void> | null = null;
-const MUSIC_VOLUME = 0.25;
+// Lowered 0.25 -> 0.18 (baseline, when no voice line is speaking) per the
+// "music too loud relative to voice lines" report — voice lines themselves
+// play at full volume (see voice.ts's `el.volume = 1`), so the previous gap
+// (0.25 vs 1.0) still wasn't enough headroom given music's typically denser
+// frequency content. MUSIC_DUCK_VOLUME below is the further, dynamic dip
+// applied only while a line is actually speaking.
+const MUSIC_VOLUME = 0.18;
+const MUSIC_DUCK_VOLUME = 0.05;
+let musicDuckInterval: number | null = null;
+
+// Smoothly ramps musicEl's volume toward `target` over `ms` — separate from
+// fadeOutAndPause below, which always ends in a pause(); this only ever
+// changes volume, used for ducking music down/back up around voice lines
+// without stopping playback.
+function rampMusicVolume(target: number, ms: number): void {
+  if (!musicEl) return;
+  if (musicDuckInterval !== null) window.clearInterval(musicDuckInterval);
+  const el = musicEl;
+  const start = el.volume;
+  const steps = 8;
+  const stepMs = ms / steps;
+  let i = 0;
+  musicDuckInterval = window.setInterval(() => {
+    i += 1;
+    el.volume = start + (target - start) * (i / steps);
+    if (i >= steps) {
+      window.clearInterval(musicDuckInterval!);
+      musicDuckInterval = null;
+      el.volume = target;
+    }
+  }, stepMs);
+}
+
+/** Duck gameplay music down while a voice line is speaking — called from
+ * voice.ts the instant a queued line actually starts playing. No-op if
+ * music isn't currently playing. */
+export function duckMusicVolume(): void {
+  rampMusicVolume(MUSIC_DUCK_VOLUME, 250);
+}
+
+/** Restores gameplay music to its normal volume — called from voice.ts once
+ * the speech queue fully drains (no more lines waiting). */
+export function restoreMusicVolume(): void {
+  rampMusicVolume(MUSIC_VOLUME, 400);
+}
 
 async function startMusic() {
   musicWanted = true;

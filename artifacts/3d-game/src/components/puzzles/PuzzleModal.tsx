@@ -199,14 +199,14 @@ export default function PuzzleModal({
 
       <div className="relative w-full max-w-md mx-3 sm:mx-4 rounded-2xl border-2 border-amber-700/60 bg-gradient-to-b from-stone-900 to-stone-950 p-4 sm:p-8 shadow-[0_0_50px_rgba(234,179,8,0.15)] font-serif max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className="flex items-center justify-between mb-4 sm:mb-6">
+        <div className="flex items-center justify-between mb-4 sm:mb-6 lg:mb-8">
           <div>
-            <h2 className="text-amber-400 font-semibold text-base sm:text-lg tracking-wide">{config.name}</h2>
-            <p className="text-white/40 text-[11px] sm:text-xs italic">{config.subtitle}</p>
+            <h2 className="text-amber-400 font-semibold text-base sm:text-lg lg:text-2xl xl:text-3xl tracking-wide">{config.name}</h2>
+            <p className="text-white/40 text-[11px] sm:text-xs lg:text-sm xl:text-base italic">{config.subtitle}</p>
           </div>
           <button
             onClick={onClose}
-            className="flex h-11 w-11 shrink-0 items-center justify-center text-white/30 hover:text-white/70 transition-colors text-xl leading-none"
+            className="flex h-11 w-11 lg:h-14 lg:w-14 shrink-0 items-center justify-center text-white/30 hover:text-white/70 transition-colors text-xl lg:text-3xl leading-none"
             aria-label="Close puzzle"
           >
             ×
@@ -215,7 +215,7 @@ export default function PuzzleModal({
 
         {victorious ? (
           <div
-            className="relative text-center py-10 rounded-xl border border-amber-500/50 bg-amber-500/5"
+            className="relative text-center py-10 lg:py-14 rounded-xl border border-amber-500/50 bg-amber-500/5"
             style={{ animation: "victory-glow 1.6s ease-in-out infinite" }}
           >
             <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-xl">
@@ -223,7 +223,7 @@ export default function PuzzleModal({
               {Array.from({ length: 15 }).map((_, i) => (
                 <span
                   key={i}
-                  className="absolute text-amber-300 text-sm"
+                  className="absolute text-amber-300 text-sm lg:text-lg"
                   style={{
                     left: `${5 + i * 6}%`,
                     bottom: "20%",
@@ -251,7 +251,7 @@ export default function PuzzleModal({
             <p className="relative text-emerald-300/90 text-sm italic mb-6">{flavorText}</p>
             <button
               onClick={handleContinue}
-              className="relative rounded-lg border border-emerald-600/70 bg-emerald-900/40 px-6 py-2 text-sm font-semibold uppercase tracking-widest text-emerald-300 transition-colors hover:bg-emerald-900/60"
+              className="relative rounded-lg border border-emerald-600/70 bg-emerald-900/40 px-6 py-2 lg:px-10 lg:py-4 text-sm lg:text-lg font-semibold uppercase tracking-widest text-emerald-300 transition-colors hover:bg-emerald-900/60"
             >
               Continue
             </button>

@@ -14,7 +14,7 @@ import Wildlife from "./Wildlife";
 import GlbButterflies from "./GlbButterfly";
 import FootstepAudio from "./FootstepAudio";
 import AmbientMotes from "../effects/AmbientMotes";
-import GrassField from "./GrassField";
+import GroundLeaves from "./GroundLeaves";
 import { useGameStore } from "../../../store/gameStore";
 import { ISLAND_SCALE, GROUND_SIZE, BOUNDARY_RADIUS } from "../../../lib/worldCollision";
 import { playSfx } from "../../../audio/sounds";
@@ -190,7 +190,22 @@ const CHEST_POSITION: [number, number, number] = [
   TEMPLE_POSITION[2] + 6.5,
 ];
 
-export default function GameEnvironment() {
+export interface GameEnvironmentProps {
+  // Emergency GPU-stability pass: staggered mount waterfall (see Scene.tsx,
+  // which owns the actual setTimeout/state-flag timing) — spreads the
+  // texture-upload spike after "Begin" across ~1s instead of every GLB in
+  // the world uploading simultaneously, which was implicated in a
+  // confirmed WebGL context loss. Ground/pathway/temple/puzzles are
+  // procedural (no GLB) and always render regardless of these flags —
+  // only the GLB-heavy decorative layers are gated.
+  mountTrees?: boolean;
+  mountDecor?: boolean;
+}
+
+export default function GameEnvironment({
+  mountTrees = true,
+  mountDecor = true,
+}: GameEnvironmentProps) {
   const puzzleSolved = useGameStore((s) => s.puzzle.solved);
   const openPuzzle = useGameStore((s) => s.openPuzzle);
   const finaleClaimed = useGameStore((s) => s.finaleClaimed);
@@ -357,64 +372,13 @@ export default function GameEnvironment() {
     return pots;
   }, []);
 
-  // Full-coverage ground grass via a jittered grid, tufted: each
-  // GRID_CELL_SIZE x GRID_CELL_SIZE cell gets BLADES_PER_TUFT individual
-  // grass-blade placements (not just one) — a lone thin blade every ~2
-  // units would still leave visible dirt between blades, unlike the old
-  // flower system where each grid placement was already a merged 5-bloom
-  // bed. Same stratified-sampling guarantee as before: every cell gets a
-  // tuft, so there are no bald patches. See GrassField.tsx for why this
-  // generates its own placements instead of using patch_of_grass.glb's
-  // built-in (broken) per-instance scatter data.
-  const grassField = useMemo(() => {
-    const rand = mulberry32(5150);
-    const blades: {
-      position: [number, number, number];
-      rotationY: number;
-      scale: number;
-    }[] = [];
-
-    const half = (GROUND_SIZE - 2) / 2;
-    const zOffset = -5 * ISLAND_SCALE;
-    const GRID_CELL_SIZE = 2.0; // world units per cell — tune density here
-    const GRID_JITTER = 0.85; // fraction of cell size a blade can drift
-    // Raised 4->13 (cell size left alone — simplest single-constant lever)
-    // for the ~200k density test, alongside GrassField.tsx's further
-    // blade-size reduction. ~191,912 final instances after exclusion
-    // zones — see GameEnvironment.tsx's own report for the exact count.
-    const BLADES_PER_TUFT = 13;
-
-    const minX = -half;
-    const maxX = half;
-    const minZ = zOffset - half;
-    const maxZ = zOffset + half;
-    const cols = Math.ceil((maxX - minX) / GRID_CELL_SIZE);
-    const rows = Math.ceil((maxZ - minZ) / GRID_CELL_SIZE);
-
-    for (let row = 0; row < rows; row++) {
-      for (let col = 0; col < cols; col++) {
-        const cellCenterX = minX + (col + 0.5) * GRID_CELL_SIZE;
-        const cellCenterZ = minZ + (row + 0.5) * GRID_CELL_SIZE;
-
-        for (let b = 0; b < BLADES_PER_TUFT; b++) {
-          const x =
-            cellCenterX + (rand() - 0.5) * GRID_CELL_SIZE * GRID_JITTER;
-          const z =
-            cellCenterZ + (rand() - 0.5) * GRID_CELL_SIZE * GRID_JITTER;
-
-          if (!isClearForGroundCover(x, z)) continue;
-
-          blades.push({
-            position: [x, 0, z],
-            rotationY: rand() * Math.PI * 2,
-            scale: 0.8 + rand() * 0.5,
-          });
-        }
-      }
-    }
-
-    return blades;
-  }, []);
+  // Performance pass: the grass system (191,912-instance single
+  // InstancedMesh, frustumCulled={false}, patch_of_grass.glb) removed
+  // entirely — re-confirmed still mounted here (import + <GrassField/>
+  // render call) despite this being a previously-decided removal, so
+  // removing it again along with GrassField.tsx and patch_of_grass.glb.
+  // The ground mesh's own material carries the "grass" look; there are no
+  // individual 3D blades anymore.
 
   // Anemone flower beds — restored as their own decorative layer alongside
   // (not replacing) the grass above. A prior session mistakenly treated
@@ -463,6 +427,68 @@ export default function GameEnvironment() {
     }
 
     return flowers;
+  }, []);
+
+  // Scattered ground-leaf litter — a separate decorative layer from both
+  // grass and flowers above (and unrelated to SprintLeaves.tsx, the
+  // character's own sprint fx). Same jittered-grid + exclusion-zone
+  // approach as grass/flowers, targeting ~100,000 instances total; see
+  // GroundLeaves.tsx for the GPU-instancing + proximity-reaction approach.
+  const groundLeaves = useMemo(() => {
+    const rand = mulberry32(9911);
+    const leaves: {
+      position: [number, number, number];
+      rotationY: number;
+      tiltX: number;
+      tiltZ: number;
+      scale: number;
+      shapeIndex: number;
+    }[] = [];
+
+    const half = (GROUND_SIZE - 2) / 2;
+    const zOffset = -5 * ISLAND_SCALE;
+    // Emergency GPU-stability pass: raised 1.1 -> 2.18 (confirmed via a
+    // standalone script replicating this exact generator + exclusion-zone
+    // logic against real numbers, not estimated) to cut the instance count
+    // from 97,910 to 24,899 — closest clean match to the ~25,000 target,
+    // following a confirmed WebGL context-loss crash. Same single-constant
+    // lever as before (LEAVES_PER_CELL left alone), still 32 draw calls
+    // via GroundLeaves.tsx's 4x4 chunking, just far fewer instances/chunk.
+    const GRID_CELL_SIZE = 2.18;
+    const GRID_JITTER = 0.9;
+    const LEAVES_PER_CELL = 2;
+
+    const minX = -half;
+    const maxX = half;
+    const minZ = zOffset - half;
+    const maxZ = zOffset + half;
+    const cols = Math.ceil((maxX - minX) / GRID_CELL_SIZE);
+    const rows = Math.ceil((maxZ - minZ) / GRID_CELL_SIZE);
+
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        const cellCenterX = minX + (col + 0.5) * GRID_CELL_SIZE;
+        const cellCenterZ = minZ + (row + 0.5) * GRID_CELL_SIZE;
+
+        for (let l = 0; l < LEAVES_PER_CELL; l++) {
+          const x = cellCenterX + (rand() - 0.5) * GRID_CELL_SIZE * GRID_JITTER;
+          const z = cellCenterZ + (rand() - 0.5) * GRID_CELL_SIZE * GRID_JITTER;
+
+          if (!isClearForGroundCover(x, z)) continue;
+
+          leaves.push({
+            position: [x, 0, z],
+            rotationY: rand() * Math.PI * 2,
+            tiltX: (rand() - 0.5) * 0.3,
+            tiltZ: (rand() - 0.5) * 0.3,
+            scale: 0.7 + rand() * 0.6,
+            shapeIndex: leaves.length % 2,
+          });
+        }
+      }
+    }
+
+    return leaves;
   }, []);
 
   // A handful of anchor points near flower patches for butterflies to
@@ -541,71 +567,83 @@ export default function GameEnvironment() {
         onEnterInterior={claimFinale}
       />
 
-      {/* Potted-flower ground cover — lines the pathway and rings the
-          temple base. Purely decorative (no collision). */}
-      {flowerPots.map((pot, i) => (
-        <GlbFlowerPot
-          key={`flower-pot-${i}`}
-          position={pot.position}
-          rotationY={pot.rotationY}
-          scale={pot.scale}
-        />
-      ))}
+      {mountDecor && (
+        <>
+          {/* Potted-flower ground cover — lines the pathway and rings the
+              temple base. Purely decorative (no collision). */}
+          {flowerPots.map((pot, i) => (
+            <GlbFlowerPot
+              key={`flower-pot-${i}`}
+              position={pot.position}
+              rotationY={pot.rotationY}
+              scale={pot.scale}
+            />
+          ))}
 
-      {/* Jittered-grid, tufted grass scatter across the walkable ground —
-          see GrassField.tsx. 1 instanced draw call, shadows off. */}
-      <GrassField placements={grassField} />
+          {/* Anemone flower beds — ground-cover decorative layer. See
+              FlowerField.tsx. (Grass system removed — see the removal note
+              above this component's flowerField declaration.) */}
+          <FlowerField placements={flowerField} />
 
-      {/* Anemone flower beds — a separate decorative layer on top of the
-          grass, not a replacement for it. See FlowerField.tsx. */}
-      <FlowerField placements={flowerField} />
-
-      {/* Autumn tree grove — artist-made GLB species (replaces the old
-          fully-procedural CherryBlossomTree / QuantumTree / GreenLeafTree) */}
-      {glbAutumnTrees.map((tree, i) => (
-        <GlbAutumnTree
-          key={`autumn-tree-${i}`}
-          position={tree.position}
-          rotationY={tree.rotationY}
-          scale={tree.scale}
-          variant={tree.variant}
-        />
-      ))}
-
-      {/* Copies of the uploaded forest tree pack model */}
-      {glbForestTrees.map((tree, i) => (
-        <GlbForestTree
-          key={`glb-tree-${i}`}
-          position={tree.position}
-          rotationY={tree.rotationY}
-          scale={tree.scale}
-          variant={tree.variant}
-        />
-      ))}
-
-      {/* Sparse boundary tree line, just past the walkable radius — softens
-          the new circular edge visually without affecting gameplay. */}
-      {boundaryRingTrees.map((tree, i) =>
-        tree.isForest ? (
-          <GlbForestTree
-            key={`boundary-tree-${i}`}
-            position={tree.position}
-            rotationY={tree.rotationY}
-            scale={tree.scale}
-            variant={tree.variant % 4}
-          />
-        ) : (
-          <GlbAutumnTree
-            key={`boundary-tree-${i}`}
-            position={tree.position}
-            rotationY={tree.rotationY}
-            scale={tree.scale}
-            variant={tree.variant}
-          />
-        )
+          {/* Scattered ground-leaf litter — separate system from
+              SprintLeaves (character sprint fx, untouched). See
+              GroundLeaves.tsx. */}
+          <GroundLeaves placements={groundLeaves} />
+        </>
       )}
 
-      {/* Glowing rune puzzles along the path */}
+      {mountTrees && (
+        <>
+          {/* Autumn tree grove — artist-made GLB species (replaces the old
+              fully-procedural CherryBlossomTree / QuantumTree / GreenLeafTree) */}
+          {glbAutumnTrees.map((tree, i) => (
+            <GlbAutumnTree
+              key={`autumn-tree-${i}`}
+              position={tree.position}
+              rotationY={tree.rotationY}
+              scale={tree.scale}
+              variant={tree.variant}
+            />
+          ))}
+
+          {/* Copies of the uploaded forest tree pack model */}
+          {glbForestTrees.map((tree, i) => (
+            <GlbForestTree
+              key={`glb-tree-${i}`}
+              position={tree.position}
+              rotationY={tree.rotationY}
+              scale={tree.scale}
+              variant={tree.variant}
+            />
+          ))}
+
+          {/* Sparse boundary tree line, just past the walkable radius —
+              softens the new circular edge visually without affecting
+              gameplay. */}
+          {boundaryRingTrees.map((tree, i) =>
+            tree.isForest ? (
+              <GlbForestTree
+                key={`boundary-tree-${i}`}
+                position={tree.position}
+                rotationY={tree.rotationY}
+                scale={tree.scale}
+                variant={tree.variant % 4}
+              />
+            ) : (
+              <GlbAutumnTree
+                key={`boundary-tree-${i}`}
+                position={tree.position}
+                rotationY={tree.rotationY}
+                scale={tree.scale}
+                variant={tree.variant}
+              />
+            )
+          )}
+        </>
+      )}
+
+      {/* Glowing rune puzzles along the path — gameplay-critical, always
+          mounts immediately (not part of the decor/tree stagger). */}
       {puzzlePlacements.map(({ id, position }) => (
         <GlowingPuzzle
           key={id}
@@ -616,10 +654,13 @@ export default function GameEnvironment() {
         />
       ))}
 
-      {/* Horizon backdrop — mountains, floating islands, extra clouds, all
-          far outside the walkable ground so it never interacts with
-          collision/gameplay. See DistantScenery.tsx. */}
-      <DistantScenery />
+      {mountDecor && (
+        /* Horizon backdrop — mountains, floating islands, extra clouds, all
+           far outside the walkable ground so it never interacts with
+           collision/gameplay. See DistantScenery.tsx. GLB-based (uses
+           forest_tree_pack.glb), so part of the decor stage. */
+        <DistantScenery />
+      )}
 
       {/* Task 1: footstep cadence detection (reads Player's exported world
           position every frame; never touches Player.tsx itself). */}
@@ -632,9 +673,11 @@ export default function GameEnvironment() {
           GLB model below instead of Wildlife's old procedural planes. */}
       <Wildlife flowerCenters={flowerClusterCenters} templePosition={TEMPLE_POSITION} />
 
-      {/* GLB butterflies scattered across the flower clusters, replacing
-          the old procedural plane-wing butterflies. */}
-      <GlbButterflies flowerCenters={flowerClusterCenters} count={15} />
+      {mountDecor && (
+        /* GLB butterflies scattered across the flower clusters, replacing
+           the old procedural plane-wing butterflies. */
+        <GlbButterflies flowerCenters={flowerClusterCenters} count={15} />
+      )}
 
       {/* Task 3: finale beam + treasure chest, only once all 4 essences are
           collected. The chest stays visible (and interactable) even after

@@ -26,6 +26,22 @@ export default function IntroStory({ onBegin }: IntroStoryProps) {
   const [index, setIndex] = useState(0);
   const isLast = index === PARAGRAPHS.length - 1;
 
+  // Warm the Scene chunk (three.js/@react-three/fiber/drei + everything
+  // Scene imports, ~1.24MB) during the intro's reading time, so it's
+  // already fetched/cached by the time "Begin" triggers Scene's own
+  // React.lazy() import in App.jsx — same module specifier, so the
+  // browser/bundler dedupes this against that later import instead of
+  // double-fetching. This is what makes the 3D world load "while the user
+  // reads the story" rather than only starting once they click Begin.
+  // Deliberately a dynamic import() here, not a static one — IntroStory
+  // is part of the eager app-shell bundle (rendered before Scene even
+  // exists), so a static three.js/drei import would pull vendor-three back
+  // into the pre-login/pre-intro critical path and undo Scene's own lazy
+  // loading.
+  useEffect(() => {
+    import("../scene/Scene");
+  }, []);
+
   // Narrate each paragraph as it's revealed. Cleanup cancels the current
   // utterance the instant `index` changes (tap-to-advance early) or the
   // component unmounts (skip / "Begin") — never two paragraphs talking
