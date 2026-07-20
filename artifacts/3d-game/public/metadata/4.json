@@ -1,0 +1,10 @@
+{
+  "name": "Aether Compass",
+  "description": "Forged the moment the last sigil pair was recalled. Its needle never points north — it points toward whatever the bearer has forgotten about themselves.",
+  "image": "/relics/4.png",
+  "attributes": [
+    { "trait_type": "Type", "value": "Alchemical Relic" },
+    { "trait_type": "Shrine", "value": "Sigil Pairs" },
+    { "trait_type": "Rarity", "value": "Legendary" }
+  ]
+}
