@@ -555,6 +555,11 @@ const _desiredCamPos = new THREE.Vector3();
 
 export interface AnimatedCharacterHandle {
   crossFadeTo: (name: string, duration?: number, once?: boolean) => void;
+  // Backs PlayerModel's T-pose gate (see its useFrame below) — PlayerModel
+  // has no local `actions` of its own (that lives in AnimatedCharacter,
+  // scoped to whichever skin is currently mounted), so it needs to ask
+  // through the ref rather than reading a mixer it doesn't own.
+  isAnimationRunning: () => boolean;
 }
 
 interface AnimatedCharacterProps {
@@ -617,7 +622,14 @@ const AnimatedCharacter = forwardRef<AnimatedCharacterHandle, AnimatedCharacterP
       activeAction.current = next;
     };
 
-    useImperativeHandle(ref, () => ({ crossFadeTo }), [actions]);
+    useImperativeHandle(
+      ref,
+      () => ({
+        crossFadeTo,
+        isAnimationRunning: () => Object.values(actions).some((a) => a?.isRunning()),
+      }),
+      [actions],
+    );
 
     useEffect(() => {
       // Fresh mixer every mount (see class doc above) — always a plain
@@ -825,8 +837,6 @@ function PlayerModel() {
   const tposeGateConfirmed = useRef(false);
   const tposeGateFrame = useRef(0);
 
-  const activeAction = useRef<THREE.AnimationAction | null>(null);
-
   const [subscribeKeys, getKeys] = useKeyboardControls<PlayerControl>();
 
   const yaw = useRef(Math.PI);
@@ -838,50 +848,6 @@ function PlayerModel() {
   const isDragging = useRef(false);
   const lastMouse = useRef({ x: 0, y: 0 });
   const camInitialized = useRef(false);
-
-  const crossFadeTo = (name: string, duration = 0.25, once = false) => {
-    const next = actions[name];
-    if (!next || next === activeAction.current) return;
-
-    next.reset();
-    if (once) {
-      next.setLoop(THREE.LoopOnce, 1);
-      next.clampWhenFinished = true;
-    } else {
-      next.setLoop(THREE.LoopRepeat, Infinity);
-    }
-    next.enabled = true;
-    next.play();
-
-    if (activeAction.current) {
-      activeAction.current.crossFadeTo(next, duration, true);
-    } else {
-      // Root cause of the game-start T-pose flash: fadeIn() ramps this
-      // action's weight 0 -> 1 over `duration` seconds, and with no other
-      // action yet holding weight (nothing to crossfade FROM on the very
-      // first activation), the skeleton renders at ~weight-0 — i.e. bind
-      // pose — for that entire ramp. Snapping straight to full weight here
-      // only affects this first-ever activation; every later transition
-      // still goes through the crossFadeTo branch above and fades normally.
-      next.setEffectiveWeight(1);
-    }
-    activeAction.current = next;
-  };
-
-  // useLayoutEffect, not useEffect: React defers useEffect until AFTER the
-  // browser paints, but R3F's render loop runs on its own independent rAF
-  // schedule — it can (and does) draw at least one already-committed frame
-  // in raw bind pose before a plain useEffect ever gets a chance to call
-  // crossFadeTo("idle") and activate the first action. useLayoutEffect runs
-  // synchronously right after the scene graph commit, before that first
-  // paint, so idle is already active (at full weight, via the
-  // setEffectiveWeight(1) fix in crossFadeTo above) before anything is ever
-  // drawn to screen. This is the second, distinct half of the T-pose-on-
-  // start bug — the weight fix alone only fixed the fade ramp; this closes
-  // the "effect hasn't even run yet" window.
-  useLayoutEffect(() => {
-    crossFadeTo("idle", 0.3);
-  }, [actions]);
 
   useEffect(() => {
     return subscribeKeys(
@@ -971,7 +937,11 @@ function PlayerModel() {
 
     if (!tposeGateConfirmed.current) {
       tposeGateFrame.current += 1;
-      const anyRunning = Object.values(actions).some((a) => a?.isRunning());
+      // PlayerModel has no local `actions` — the real AnimationMixer/
+      // actions live inside AnimatedCharacter (see its doc comment: it
+      // owns the model-swap-sensitive mixer, remounted fresh per skin),
+      // exposed back here only through animRef's isAnimationRunning().
+      const anyRunning = animRef.current?.isAnimationRunning() ?? false;
       if (tposeGateFrame.current <= 30) {
         // eslint-disable-next-line no-console
         console.log("🎬 T-POSE GATE:", anyRunning, "frame:", tposeGateFrame.current);
