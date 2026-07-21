@@ -192,29 +192,37 @@ export default function App() {
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-slate-950">
-      {isLoggedIn && !hasSeenIntro && <IntroStory onBegin={setHasSeenIntro} />}
+      {/* Persistent Scene to avoid WebGL context leaks */}
+      <div
+        className={`absolute inset-0 ${
+          isLoggedIn && hasSeenIntro ? "z-0 opacity-100 pointer-events-auto" : "z-0 opacity-0 pointer-events-none"
+        }`}
+      >
+        <Scene walletAddress={walletAddress} onConnectWallet={handleLogout} />
+      </div>
 
-      {isLoggedIn && hasSeenIntro && (
-        <>
-          <Scene walletAddress={walletAddress} onConnectWallet={handleLogout} />
+      {isLoggedIn && !hasSeenIntro && (
+        <div className="absolute inset-0 z-50">
+          <IntroStory onBegin={setHasSeenIntro} />
+        </div>
+      )}
 
-          {/* Small banner so dev sessions are never mistaken for real auth */}
-          {isDevSession && (
-            <div className="pointer-events-none absolute bottom-2 left-1/2 z-[70] -translate-x-1/2 rounded border border-amber-600/50 bg-stone-950/80 px-3 py-1 text-[10px] uppercase tracking-[0.25em] text-amber-400/80">
-              Dev Session — Not Logged In
-            </div>
-          )}
-        </>
+      {isLoggedIn && hasSeenIntro && isDevSession && (
+        <div className="pointer-events-none absolute bottom-2 left-1/2 z-[70] -translate-x-1/2 rounded border border-amber-600/50 bg-stone-950/80 px-3 py-1 text-[10px] uppercase tracking-[0.25em] text-amber-400/80">
+          Dev Session — Not Logged In
+        </div>
       )}
 
       {!isLoggedIn && (
-        <MainMenu
-          onLoginWithEmail={handleLoginWithEmail}
-          onLoginWithGoogle={handleLoginWithGoogle}
-          onDevBypass={handleDevBypass}
-          isLoading={authLoading}
-          error={authError}
-        />
+        <div className="absolute inset-0 z-50">
+          <MainMenu
+            onLoginWithEmail={handleLoginWithEmail}
+            onLoginWithGoogle={handleLoginWithGoogle}
+            onDevBypass={handleDevBypass}
+            isLoading={authLoading}
+            error={authError}
+          />
+        </div>
       )}
     </div>
   );

@@ -16,13 +16,17 @@ import { useSoundStore } from "../../store/soundStore";
 export default function GameHUD({
   health = 72,
   maxHealth = 100,
-  score = 340,
+  // score = 340,
+  arcanaCoins = 500,
   essences = 3, // collected alchemical essences / NFT keys
   onConnectWallet = () => {},
   walletAddress = null,
   // Task D: puzzle-location map toggle — desktop "M" key or this icon.
   mapOpen = false,
   onToggleMap = () => {},
+  // Locker/Inventory toggle — desktop "I" key or this icon.
+  lockerOpen = false,
+  onToggleLocker = () => {},
   // Task B: true on touch/narrow-viewport devices — reserves extra bottom
   // clearance under the score/inventory panel so it never sits under the
   // on-screen action button (both are bottom-right).
@@ -99,6 +103,19 @@ export default function GameHUD({
           🗺️
         </button>
         <button
+          onClick={onToggleLocker}
+          title={lockerOpen ? "Close locker (I)" : "Open locker (I)"}
+          aria-pressed={lockerOpen}
+          className={[
+            "pointer-events-auto flex h-11 w-11 items-center justify-center rounded-lg border-2 text-sm shadow-[0_0_14px_rgba(217,119,6,0.35)] backdrop-blur-sm transition-all hover:scale-105 active:scale-95 sm:h-[42px] sm:w-[42px] sm:text-lg",
+            lockerOpen
+              ? "border-amber-300 bg-amber-500/20 text-amber-200"
+              : "border-amber-500/80 bg-gradient-to-b from-stone-800/95 to-emerald-950/95 text-amber-100 hover:border-amber-300 hover:shadow-[0_0_20px_rgba(251,191,36,0.55)]",
+          ].join(" ")}
+        >
+          🎒
+        </button>
+        <button
           onClick={toggleMute}
           title={muted ? "Unmute puzzle sounds" : "Mute puzzle sounds"}
           className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-lg border-2 border-amber-500/80 bg-gradient-to-b from-stone-800/95 to-emerald-950/95 text-sm text-amber-100 shadow-[0_0_14px_rgba(217,119,6,0.35)] backdrop-blur-sm transition-all hover:scale-105 hover:border-amber-300 hover:shadow-[0_0_20px_rgba(251,191,36,0.55)] active:scale-95 sm:h-[42px] sm:w-[42px] sm:text-lg"
@@ -113,7 +130,9 @@ export default function GameHUD({
             🜛
           </span>
           {shortAddr ? (
-            <span className="font-mono text-emerald-300">{shortAddr}</span>
+            <span className="font-mono text-emerald-300">
+              {shortAddr} <span className="text-amber-500/50 mx-1">|</span> {arcanaCoins} Arcana Coins
+            </span>
           ) : (
             <span>Connect Wallet</span>
           )}
@@ -135,16 +154,6 @@ export default function GameHUD({
           mobileControlsActive ? "bottom-24" : "bottom-2 sm:bottom-4",
         ].join(" ")}
       >
-        {/* Score plaque */}
-        <div className="rounded-md border border-amber-600/70 bg-stone-950/80 px-2.5 py-1 shadow-lg backdrop-blur-sm sm:px-4 sm:py-1.5">
-          <span className="mr-1.5 text-[8px] uppercase tracking-[0.2em] text-amber-400/80 sm:mr-2 sm:text-[10px] sm:tracking-[0.3em]">
-            Arcana
-          </span>
-          <span className="text-sm font-bold text-amber-100 drop-shadow sm:text-lg">
-            {score.toLocaleString()}
-          </span>
-        </div>
-
         {/* Inventory slots (4 slots; filled = collected essence) */}
         <div className="flex gap-1.5 rounded-xl border-2 border-amber-700/70 bg-gradient-to-b from-stone-900/90 to-stone-950/90 p-1.5 shadow-[0_0_16px_rgba(0,0,0,0.6)] backdrop-blur-sm sm:gap-2 sm:p-2">
           {[0, 1, 2, 3].map((slot) => {

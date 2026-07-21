@@ -7,6 +7,10 @@ import { useGameStore } from "../../store/gameStore";
 import { speak } from "../../audio/voice";
 import { registerBlocker } from "../../lib/worldCollision";
 
+// How close (world units, XZ-plane) the player must be to see the "Press E
+// to Trade" prompt and have E open the shop.
+const INTERACT_RADIUS = 4;
+
 // Exported so MinimapOverlay.tsx can plot the merchant's marker using the
 // exact same coordinate the 3D scene actually places him at — same pattern
 // as TEMPLE_POSITION/PUZZLE_PLACEMENTS in GameEnvironment.tsx.
@@ -52,23 +56,16 @@ export default function Merchant() {
   // one-time merchant_first_meet greeting voice line did).
   const [inRange, setInRange] = useState(false);
 
+  const [nearby, setNearby] = useState(false);
+  const openShop = useGameStore((s) => s.openShop);
+  const phase = useGameStore((s) => s.phase);
+
+  // Yeh line duplicate thi, ab siraf ek dafa hai
   const spawnPosition: [number, number, number] = DEBUG_SPAWN_NEAR_PLAYER
     ? [3, 0, 0] // right in front of / above player spawn — impossible to miss
     : MERCHANT_POSITION;
 
-  // Collider radius, measured from the rig's own foot bones (L_foot_JNT /
-  // R_foot_JNT — confirmed via direct GLB skin/joint inspection) rather
-  // than Box3().setFromObject(scene), which — per this codebase's own
-  // documented pitfall — only reflects bind pose and ignores bone
-  // deformation; worse, a T/A-pose bind pose here would badly overstate
-  // the footprint since arms are typically spread wide in bind pose. Feet
-  // are far less affected by that than arms/hands, so their world-space
-  // spread (after updateMatrixWorld) is a reliable stand-in for the
-  // model's actual standing footprint. Merchant.tsx had NO collider
-  // registered at all before this (confirmed via a repo-wide grep for
-  // registerBlocker() — only the tree components and JapaneseTemple
-  // called it) — that's the root cause of walking straight through him,
-  // not a mismatched position/radius.
+  // --- Robin's Logic: Collider and Voice Lines ---
   const footprintRadius = useMemo(() => {
     scene.updateMatrixWorld(true);
     let maxDist = 0;
@@ -79,13 +76,9 @@ export default function Merchant() {
         maxDist = Math.max(maxDist, Math.hypot(p.x, p.z));
       }
     });
-    // Fallback if the rig's naming ever changes and no "foot" bone matches.
     return (maxDist || 0.15) * MERCHANT_SCALE + COLLIDER_MARGIN;
   }, [scene]);
 
-  // Uses spawnPosition (not the hardcoded MERCHANT_POSITION) so the
-  // collider always matches wherever the model is actually rendered,
-  // including under DEBUG_SPAWN_NEAR_PLAYER.
   useEffect(() => {
     return registerBlocker({
       minX: spawnPosition[0] - footprintRadius,
@@ -94,7 +87,6 @@ export default function Merchant() {
       maxZ: spawnPosition[2] + footprintRadius,
       isSolid: () => true,
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [footprintRadius, spawnPosition[0], spawnPosition[2]]);
 
   // merchant_first_meet — fires once ever (gameStore.hasMetMerchant),
@@ -109,6 +101,8 @@ export default function Merchant() {
   const lastLogRef = useRef(0);
 
   useFrame((state) => {
+    if (useGameStore.getState().hasMetMerchant) return;
+
     const distance = PLAYER_WORLD_POS.distanceTo(merchantPos);
     const nowInRange = distance <= PROXIMITY_RANGE;
 
@@ -117,8 +111,8 @@ export default function Merchant() {
       // eslint-disable-next-line no-console
       console.log(
         `[Merchant DEBUG] player=(${PLAYER_WORLD_POS.x.toFixed(2)}, ${PLAYER_WORLD_POS.z.toFixed(2)}) ` +
-          `merchant=(${merchantPos.x.toFixed(2)}, ${merchantPos.z.toFixed(2)}) distance=${distance.toFixed(2)} ` +
-          `PROXIMITY_RANGE=${PROXIMITY_RANGE} nowInRange=${nowInRange} inRangeState=${inRange}`,
+        `merchant=(${merchantPos.x.toFixed(2)}, ${merchantPos.z.toFixed(2)}) distance=${distance.toFixed(2)} ` +
+        `PROXIMITY_RANGE=${PROXIMITY_RANGE} nowInRange=${nowInRange} inRangeState=${inRange}`,
       );
     }
 
@@ -141,6 +135,24 @@ export default function Merchant() {
     }
   });
 
+  // --- Asra's Logic: E to Interact and Open Shop ---
+  useFrame(() => {
+    const dx = spawnPosition[0] - PLAYER_WORLD_POS.x;
+    const dz = spawnPosition[2] - PLAYER_WORLD_POS.z;
+    const isNear = dx * dx + dz * dz <= INTERACT_RADIUS * INTERACT_RADIUS;
+    if (isNear !== nearby) setNearby(isNear);
+  });
+
+  useEffect(() => {
+    if (!nearby) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() === "e" && phase !== "dead") openShop();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [nearby, phase, openShop]);
+
+  // --- Shared Setup ---
   useEffect(() => {
     const actionName = Object.keys(actions)[0];
     if (actionName && actions[actionName]) {
@@ -155,54 +167,46 @@ export default function Merchant() {
 
         if (DEBUG_PINK_MATERIAL) {
           mesh.material = new THREE.MeshStandardMaterial({
-            color: 0xff00ff, // bright pink — impossible to miss
+            color: 0xff00ff,
             emissive: 0xff00ff,
             emissiveIntensity: 0.5,
           });
         }
       }
     });
-
-    // 🔍 DEBUG LOGGING — merchant kahan spawn hua aur uski actual size kya hai
-    // setTimeout(() => {
-    //   if (group.current) {
-    //     const box = new THREE.Box3().setFromObject(group.current);
-    //     const size = new THREE.Vector3();
-    //     box.getSize(size);
-    //     const center = new THREE.Vector3();
-    //     box.getCenter(center);
-
-    //     console.log("🧑‍💼 ====== MERCHANT DEBUG ====== 🧑‍💼");
-    //     console.log("group.current exists:", !!group.current);
-    //     console.log("scene children count:", scene.children.length);
-    //     console.log("World Position (group):", group.current.position);
-    //     console.log(
-    //       "World Center (bounding box):",
-    //       `X: ${center.x.toFixed(2)}, Y: ${center.y.toFixed(2)}, Z: ${center.z.toFixed(2)}`,
-    //     );
-    //     console.log(
-    //       "Actual World Size:",
-    //       `W: ${size.x.toFixed(3)}, H: ${size.y.toFixed(3)}, D: ${size.z.toFixed(3)}`,
-    //     );
-    //     console.log(
-    //       "Is size zero/tiny? (mesh missing or scale wrong):",
-    //       size.x < 0.01 && size.y < 0.01 && size.z < 0.01,
-    //     );
-    //     console.log("Visible flag:", group.current.visible);
-    //     console.log("Mesh names found:");
-    //     scene.traverse((child) => {
-    //       if ((child as THREE.Mesh).isMesh) {
-    //         console.log("  -", child.name, "| visible:", child.visible);
-    //       }
-    //     });
-    //     console.log("================================");
-    //   } else {
-    //     console.error(
-    //       "❌ Merchant group.current is NULL — component may not be mounted!",
-    //     );
-    //   }
-    // }, 1500);
   }, [actions, scene]);
+
+
+
+  // Proximity check against the player's live world position (same
+  // PLAYER_WORLD_POS mutable ref Player.tsx updates every frame — see its
+  // teleportPlayerToSpawn comment for why this stays out of gameStore).
+  useFrame(() => {
+    const dx = spawnPosition[0] - PLAYER_WORLD_POS.x;
+    const dz = spawnPosition[2] - PLAYER_WORLD_POS.z;
+    const isNear = dx * dx + dz * dz <= INTERACT_RADIUS * INTERACT_RADIUS;
+    if (isNear !== nearby) setNearby(isNear);
+  });
+
+  useEffect(() => {
+    if (!nearby) return;
+    // Matches GlowingPuzzle.tsx's proven proximity-interact convention
+    // exactly: `e.key.toLowerCase() === "e"` (not `e.code`), because
+    // touchControls.ts's mobile "interact" button dispatches a synthetic
+    // `KeyboardEvent("keydown", { key: "e" })` with no `code` set — an
+    // `e.code === "KeyE"` check would silently never fire for touch users.
+    // Gating only excludes "dead" (not "requires phase === exploring") for
+    // the same reason: gameStore's default/steady-state phase during
+    // ordinary exploration is "menu" (nothing transitions it to
+    // "exploring" until the player's first puzzle open/close), so
+    // requiring "exploring" here would block E for anyone who reaches the
+    // Merchant before ever touching a puzzle.
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() === "e" && phase !== "dead") openShop();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [nearby, phase, openShop]);
 
   return (
     <Suspense fallback={null}>
